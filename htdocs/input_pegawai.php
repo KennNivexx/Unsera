@@ -6,15 +6,46 @@ if (!isset($_SESSION['admin_id'])) {
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['simpan'])) {
-    $nama = $_POST['nama_lengkap'];
-    $alamat = $_POST['alamat'];
-    $ttl = $_POST['ttl'];
-    $jenis = $_POST['jenis_pegawai'];
-    $status_pribadi = $_POST['status_pribadi'] ?? '';
-    $jabatan = $_POST['posisi_jabatan'];
-    $tmk = $_POST['tmt_mulai_kerja'] ?: null;
-    $tmtk = $_POST['tmt_tidak_kerja'] ?: null;
-    $unit = $_POST['unit_kerja'];
+    $nama          = $_POST['nama_lengkap'];
+    $alamat        = $_POST['alamat'];
+    $ttl_tempat    = $_POST['ttl_tempat'] ?? '';
+    $ttl_tanggal   = $_POST['ttl_tanggal'] ?: null;
+    $ttl_lama      = ($ttl_tempat ? $ttl_tempat . ', ' : '') . ($ttl_tanggal ? date('d F Y', strtotime($ttl_tanggal)) : '');
+    $status_pribadi= $_POST['status_pribadi'] ?? '';
+    $jabatan       = $_POST['posisi_jabatan'];
+    $unit          = $_POST['unit_kerja'];
+    $tmk           = $_POST['tmt_mulai_bekerja'] ?: null;
+    $tmtk          = $_POST['tmt_tidak_bekerja'] ?: null;
+    $ket_tmtk      = $_POST['ket_tmtk'] ?? '';
+
+    // Handle dok_status_pegawai upload
+    $dok_status_pegawai = '';
+    if (!empty($_FILES['dok_status_pegawai']['name']) && $_FILES['dok_status_pegawai']['error'] == 0) {
+        if (!is_dir('uploads')) mkdir('uploads', 0777, true);
+        $ext = pathinfo($_FILES['dok_status_pegawai']['name'], PATHINFO_EXTENSION);
+        $dok_status_pegawai = 'uploads/dok_sp_' . time() . '.' . $ext;
+        move_uploaded_file($_FILES['dok_status_pegawai']['tmp_name'], $dok_status_pegawai);
+    }
+
+    // Handle KTP upload
+    $dok_ktp = '';
+    if (!empty($_FILES['dok_ktp']['name']) && $_FILES['dok_ktp']['error'] == 0) {
+        if (!is_dir('uploads')) mkdir('uploads', 0777, true);
+        $ext = pathinfo($_FILES['dok_ktp']['name'], PATHINFO_EXTENSION);
+        $dok_ktp = 'uploads/ktp_p_' . time() . '.' . $ext;
+        move_uploaded_file($_FILES['dok_ktp']['tmp_name'], $dok_ktp);
+    }
+
+    // Handle KK upload
+    $dok_kk = '';
+    if (!empty($_FILES['dok_kk']['name']) && $_FILES['dok_kk']['error'] == 0) {
+        if (!is_dir('uploads')) mkdir('uploads', 0777, true);
+        $ext = pathinfo($_FILES['dok_kk']['name'], PATHINFO_EXTENSION);
+        $dok_kk = 'uploads/kk_p_' . time() . '.' . $ext;
+        move_uploaded_file($_FILES['dok_kk']['tmp_name'], $dok_kk);
+    }
+
+    // Pendidikan list
     $pendidikan_list = [];
     if (!empty($_POST['pend_jenjang'])) {
         foreach ($_POST['pend_jenjang'] as $i => $jenjang) {
@@ -31,8 +62,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['simpan'])) {
         }
     }
     $pendidikan = $pendidikan_list[0]['jenjang'] ?? ($_POST['riwayat_pendidikan'] ?? '');
-
-    $ket_tmtk = $_POST['ket_tmtk'] ?? '';
 
     // Handle TMTK Document
     $dok_tmtk = "";
@@ -51,18 +80,39 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['simpan'])) {
         move_uploaded_file($_FILES['foto_profil']['tmp_name'], $foto_profil);
     }
 
+    $status_peg_list = [];
+    if(!empty($_POST['status_pegawai'])) {
+        foreach($_POST['status_pegawai'] as $i => $std) {
+            if(trim($std) !== '') {
+                $tmt = !empty($_POST['tmt_status_pegawai'][$i]) ? $_POST['tmt_status_pegawai'][$i] : null;
+                $filename = '';
+                if(!empty($_FILES['dok_status_peg_riwayat']['name'][$i])) {
+                    $filename = 'uploads/'.time().'_sp_'.basename($_FILES['dok_status_peg_riwayat']['name'][$i]);
+                    move_uploaded_file($_FILES['dok_status_peg_riwayat']['tmp_name'][$i], $filename);
+                }
+                $status_peg_list[] = ['status' => $std, 'tmt' => $tmt, 'dokumen' => $filename];
+            }
+        }
+    }
+    $status_peg_latest = $status_peg_list[0]['status'] ?? '';
+
     // Insert into pegawai
-    $sql = "INSERT INTO pegawai (nama_lengkap, alamat, ttl, jenis_pegawai, status_pribadi, posisi_jabatan, tmt_mulai_kerja, tmt_tidak_kerja, unit_kerja, riwayat_pendidikan, ket_tidak_kerja, dok_tmtk, foto_profil) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $sql = "INSERT INTO pegawai (nama_lengkap, alamat, ttl, ttl_tempat, ttl_tanggal, status_pegawai, status_pribadi, posisi_jabatan, unit_kerja, tmt_mulai_kerja, tmt_tidak_kerja, riwayat_pendidikan, ket_tidak_kerja, dok_tmtk, dok_ktp, dok_kk, foto_profil) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sssssssssssss", $nama, $alamat, $ttl, $jenis, $status_pribadi, $jabatan, $tmk, $tmtk, $unit, $pendidikan, $ket_tmtk, $dok_tmtk, $foto_profil);
+    $stmt->bind_param("sssssssssssssssss",
+        $nama, $alamat, $ttl_lama, $ttl_tempat, $ttl_tanggal,
+        $status_peg_latest, $status_pribadi,
+        $jabatan, $unit, $tmk, $tmtk,
+        $pendidikan, $ket_tmtk, $dok_tmtk,
+        $dok_ktp, $dok_kk, $foto_profil
+    );
     
     if ($stmt->execute()) {
         $pegawai_id = $conn->insert_id;
 
         // Dynamic Yayasan
-        $yayasan_list = [];
         if (!empty($_POST['gol_yayasan'])) {
             foreach ($_POST['gol_yayasan'] as $i => $gol) {
                 if (trim($gol) !== '') {
@@ -78,6 +128,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['simpan'])) {
                     $st->close();
                 }
             }
+        }
+
+        // Status History
+        foreach ($status_peg_list as $stt) {
+            $st = $conn->prepare("INSERT INTO status_pegawai_riwayat (pegawai_id, status_pegawai, tmt, dokumen) VALUES (?, ?, ?, ?)");
+            $st->bind_param("isss", $pegawai_id, $stt['status'], $stt['tmt'], $stt['dokumen']);
+            $st->execute();
+            $st->close();
         }
 
         // Insert Pendidikan
@@ -129,7 +187,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['simpan'])) {
         echo "<script>alert('Data pegawai berhasil disimpan!');location='data_pegawai.php';</script>";
         exit;
     } else {
-        echo "<script>alert('Gagal menyimpan data.');</script>";
+        echo "<script>alert('Gagal menyimpan data: " . addslashes($conn->error) . "');</script>";
     }
     $stmt->close();
 }
@@ -180,96 +238,141 @@ $breadcrumbs = [
 <div class="main-content">
     <?php include 'components/navbar.php'; ?>
 
-    <div class="header-section" style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 15px;">
-        <div>
-            <h1>Tambah Pegawai Baru</h1>
-            <p>Lengkapi profil staf kependidikan untuk ditambahkan ke sistem Universitas Serang Raya.</p>
-        </div>
-        <div>
-            <a href="data_pegawai.php" class="btn btn-outline">
-                <i class="fas fa-arrow-left"></i> Kembali
+    <div class="header-section" style="margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: centre; flex-wrap: wrap; gap: 20px;">
+            <div>
+                <h1 style="font-size: 1.5rem; color: var(--text-main); font-weight: 600;">Registrasi Pegawai Baru</h1>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 4px;">Pendaftaran tenaga kependidikan dan staf administrasi baru.</p>
+            </div>
+            <a href="data_pegawai.php" class="btn btn-outline" style="height: fit-content;">
+                <i class="fas fa-arrow-left"></i> Kembali ke Daftar
             </a>
         </div>
     </div>
 
-    <form method="POST" enctype="multipart/form-data" class="card">
+    <form method="POST" enctype="multipart/form-data" style="max-width: 1100px; margin: 0 auto;">
         
-        <!-- Foto Profil -->
-        <div class="form-section">
-            <h3><i class="fas fa-camera"></i> Foto Profil</h3>
-            <div class="form-group">
-                <label>Upload Foto Profil (JPG/PNG)</label>
-                <input type="file" name="foto_profil" accept=".jpg,.jpeg,.png">
+        <!-- Profil Picture Section -->
+        <div class="card" style="display: flex; align-items: center; gap: 20px; padding: 20px;">
+            <div style="width: 80px; height: 80px; background: #f8fafc; border-radius: 6px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color); flex-shrink: 0;">
+                <i class="fas fa-camera" style="font-size: 2rem; color: #94a3b8;"></i>
+            </div>
+            <div style="flex: 1;">
+                <h3 style="margin-bottom: 5px; font-size: 1rem; border: none; padding: 0;">Foto Profil Pegawai</h3>
+                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 10px;">Unggah foto formal staf. Format JPG/PNG, Maks 2MB.</p>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <input type="file" name="foto_profil" accept=".jpg,.jpeg,.png" style="max-width: 400px; padding: 5px; font-size: 0.85rem;">
+                </div>
             </div>
         </div>
 
         <!-- Informasi Pribadi -->
-        <div class="form-section">
-            <h3><i class="fas fa-user"></i> Informasi Pribadi</h3>
-            <div class="form-group">
-                <label>Nama Lengkap</label>
+        <div class="card" style="padding: 24px;">
+            <h3 style="border-bottom: 1px solid var(--border-color); padding-bottom: 15px; font-size: 1.05rem;">Data Identitas Pegawai</h3>
+            <div class="form-group" style="margin-top: 15px;">
+                <label>Nama Lengkap (beserta gelar)</label>
                 <input type="text" name="nama_lengkap" placeholder="Contoh: Ahmad Subarjo, S.Kom." required>
             </div>
             
-            <div class="form-group">
-                <label>Alamat Lengkap</label>
-                <textarea name="alamat" rows="2" placeholder="Alamat lengkap sesuai KTP" required></textarea>
-            </div>
-
-            <div class="multi-row">
+            <div class="multi-row" style="margin-top: 20px;">
                 <div class="form-group">
-                    <label>Tempat & Tanggal Lahir (TTL)</label>
-                    <input type="text" name="ttl" placeholder="Contoh: Serdang Bedagai, 1 Januari 1990" required>
+                    <label>Tempat Lahir</label>
+                    <input type="text" name="ttl_tempat" placeholder="Kota Kelahiran" required>
                 </div>
                 <div class="form-group">
-                    <label>Status Pernikahan</label>
-                    <select name="status_pribadi" required>
-                        <option value="">Pilih Status</option>
-                        <option value="Menikah">Menikah</option>
-                        <option value="Belum Menikah">Belum Menikah</option>
-                        <option value="Bercerai">Bercerai</option>
-                    </select>
+                    <label>Tanggal Lahir</label>
+                    <input type="date" name="ttl_tanggal" required>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Alamat Tinggal Sesuai KTP</label>
+                <textarea name="alamat" rows="3" placeholder="Tuliskan alamat lengkap..." required></textarea>
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Status Pernikahan</label>
+                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                    <?php foreach(['Menikah', 'Belum Menikah', 'Bercerai'] as $stat): ?>
+                        <label class="radio-label" style="background: #f8fafc; border: 1px solid var(--border-color); padding: 8px 16px; border-radius: var(--radius-sm);  flex: 1; text-align: center; justify-content: center;">
+                            <input type="radio" name="status_pribadi" value="<?= $stat ?>" required style="margin-right: 8px;"> <?= $stat ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <div class="multi-row" style="margin-top: 20px; background: #f8fafc; padding: 15px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Dokumen KTP (PDF/JPG)</label>
+                    <input type="file" name="dok_ktp" accept=".pdf,.jpg,.jpeg,.png">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Dokumen Kartu Keluarga</label>
+                    <input type="file" name="dok_kk" accept=".pdf,.jpg,.jpeg,.png">
                 </div>
             </div>
         </div>
 
-        <!-- Kepegawaian -->
-        <div class="form-section">
-            <h3><i class="fas fa-briefcase"></i> Status Kepegawaian</h3>
+        <!-- Status Kepegawaian -->
+        <div class="card" style="padding: 24px;">
+            <h3 style="border-bottom: 1px solid var(--border-color); padding-bottom: 15px; font-size: 1.05rem;">Status Kepegawaian & Penugasan</h3>
             
-            <div class="multi-row">
-                <div class="form-group">
-                    <label>Jenis Pegawai</label>
-                    <div style="display: flex; gap: 25px; margin-top: 10px;">
-                        <label class="radio-label"><input type="radio" name="jenis_pegawai" value="tetap" required> Tetap</label>
-                        <label class="radio-label"><input type="radio" name="jenis_pegawai" value="tdk tetap"> Tidak Tetap</label>
+            <div id="status-pegawai-wrapper" style="margin-top: 15px;">
+                <div class="dynamic-item" style="border-left: 3px solid var(--primary); background: #ffffff;">
+                    <div class="multi-row">
+                        <div class="form-group">
+                            <label>Status Pegawai Saat Ini</label>
+                            <select name="status_pegawai[]" required>
+                                <option value="">- Pilih Status -</option>
+                                <option value="Tetap">Tetap</option>
+                                <option value="Tidak Tetap">Tidak Tetap</option>
+                                <option value="Honorer">Honorer</option>
+                                <option value="Kontrak">Kontrak</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>TMT Status</label>
+                            <input type="date" name="tmt_status_pegawai[]">
+                        </div>
                     </div>
-                </div>
-                <div class="form-group">
-                    <label>Posisi Jabatan / Unit Kerja</label>
-                    <div style="display: flex; gap: 15px;">
-                        <input type="text" name="posisi_jabatan" placeholder="Jabatan (Staf IT)" required style="flex: 1;">
-                        <input type="text" name="unit_kerja" placeholder="Unit (Biro Umum)" required style="flex: 1;">
+                    <div class="form-group" style="margin-top:15px; margin-bottom: 0;">
+                        <label>SK Status Kepegawaian</label>
+                        <input type="file" name="dok_status_peg_riwayat[]" accept=".pdf,.jpg,.jpeg,.png">
                     </div>
                 </div>
             </div>
+            <button type="button" onclick="addStatusPegawai()" class="btn btn-outline" style="width:100%; margin-bottom: 20px; border-style: dashed;">
+                <i class="fas fa-plus"></i> Tambah Riwayat Status Pegawai
+            </button>
 
-            <div class="multi-row">
-                <div class="form-group">
-                    <label>Terhitung Mulai Kerja (TMK)</label>
-                    <input type="date" name="tmt_mulai_kerja" required>
+            <div class="multi-row" style="margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Jabatan / Posisi</label>
+                    <input type="text" name="posisi_jabatan" placeholder="Contoh: Staf IT / Administrasi" required>
                 </div>
-                <div class="form-group">
-                    <label>TMT Tidak Kerja (Opsional)</label>
-                    <input type="date" name="tmt_tidak_kerja" id="tmtk_input">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Unit Kerja / Divisi</label>
+                    <input type="text" name="unit_kerja" placeholder="Contoh: Biro Umum / Fakultas" required>
                 </div>
             </div>
 
-            <div id="area_tmtk" class="hidden dynamic-item">
+            <div class="multi-row" style="margin-bottom: 25px;">
+                <div class="form-group">
+                    <label>Tanggal Mulai Bekerja (TMK)</label>
+                    <input type="date" name="tmt_mulai_bekerja" required>
+                </div>
+                <div class="form-group">
+                    <label>Tanggal Mulai Tidak Bekerja (TMTK)</label>
+                    <input type="date" name="tmt_tidak_bekerja" id="tmtk_input">
+                </div>
+            </div>
+
+            <div id="area_tmtk" class="hidden dynamic-item" style="background: #fff1f2; border: 1px solid #fecaca;">
+                <h4 style="font-size: 0.9rem; color: #b91c1c; font-weight: 800; margin-bottom: 15px; text-transform: uppercase;">Informasi Pemberhentian</h4>
                 <div class="multi-row">
                     <div class="form-group">
-                        <label>Alasan Berhenti</label>
-                        <select name="ket_tmtk">
+                        <label style="color: #b91c1c;">Alasan Berhenti</label>
+                        <select name="ket_tmtk" style="background: white;">
                             <option value="">Pilih Alasan</option>
                             <option value="Resign">Resign</option>
                             <option value="Pensiun">Pensiun</option>
@@ -277,76 +380,67 @@ $breadcrumbs = [
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Dokumen SK Pemberhentian</label>
-                        <input type="file" name="dok_tmtk" accept=".pdf,.png,.jpg,.jpeg">
+                        <label style="color: #b91c1c;">SK Pemberhentian</label>
+                        <input type="file" name="dok_tmtk" accept=".pdf,.png,.jpg,.jpeg" style="background: white;">
                     </div>
                 </div>
             </div>
+        </div>
 
-            <!-- Pendidikan -->
-            <div class="form-section" style="margin-top:20px;">
-                <h3><i class="fas fa-graduation-cap"></i> Riwayat Pendidikan</h3>
-                <div id="pendidikan-wrapper">
-                    <div class="dynamic-item">
-                        <div class="multi-row">
-                            <div class="form-group">
-                                <label>Jenjang / Tingkat</label>
-                                <select name="pend_jenjang[]" required>
-                                    <option value="">- Pilih -</option>
-                                    <?php foreach(['SD', 'SMP', 'SMA/SMK', 'D3', 'D4', 'S1', 'S2', 'S3'] as $p): ?>
-                                    <option value="<?= $p ?>"><?= $p ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Nama Institusi / Universitas</label>
-                                <input type="text" name="pend_institusi[]" placeholder="Contoh: Universitas Indonesia" required>
-                            </div>
+        <!-- Kualifikasi Pendidikan -->
+        <div class="card">
+            <h3 style="border-bottom: 1px solid var(--border-color); padding-bottom: 15px; font-size: 1.05rem; margin-bottom: 20px;">Kualifikasi Pendidikan Terakhir</h3>
+            <div id="pendidikan-wrapper">
+                <div class="dynamic-item" style="border-left: 4px solid var(--success); background: #ffffff;">
+                    <div class="multi-row">
+                        <div class="form-group">
+                            <label>Jenjang / Tingkat</label>
+                            <select name="pend_jenjang[]" required style="font-weight:600;">
+                                <option value="">- Pilih Jenjang -</option>
+                                <?php foreach(['SD', 'SMP', 'SMA/SMK', 'D3', 'D4', 'S1', 'S2', 'S3'] as $p): ?>
+                                <option value="<?= $p ?>"><?= $p ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
-                        <div class="multi-row" style="margin-top:12px;">
-                            <div class="form-group">
-                                <label>Tahun Lulus</label>
-                                <input type="number" name="pend_tahun[]" min="1950" max="2100" placeholder="YYYY" required>
-                            </div>
-                            <div class="form-group">
-                                <label>Upload Ijazah <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
-                                <input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png">
-                            </div>
+                        <div class="form-group">
+                            <label>Nama Institusi / Sekolah</label>
+                            <input type="text" name="pend_institusi[]" placeholder="Contoh: Universitas Serang Raya" required>
+                        </div>
+                    </div>
+                    <div class="multi-row" style="margin-top:20px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label>Tahun Lulus</label>
+                            <input type="number" name="pend_tahun[]" min="1950" max="2100" placeholder="YYYY" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label>Upload Ijazah / Transkrip</label>
+                            <input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png" style="background: #f8fafc;">
                         </div>
                     </div>
                 </div>
-                <button type="button" onclick="addPendidikan()" class="btn btn-outline" style="width:100%; margin-bottom: 20px;"><i class="fas fa-plus"></i> Tambah Riwayat Pendidikan</button>
             </div>
-
-            <!-- Yayasan -->
-            <div class="form-section" style="margin-top:20px;">
-                <h3><i class="fas fa-building"></i> Golongan Yayasan</h3>
-                <div id="yayasan-wrapper">
-                    <!-- Dynamic -->
-                </div>
-                <button type="button" onclick="addYayasan()" class="btn btn-outline" style="width:100%;"><i class="fas fa-plus"></i> Tambah Golongan Yayasan</button>
-            </div>
+            <button type="button" onclick="addPendidikan()" class="btn btn-outline" style="width:100%; margin-bottom: 25px; border-style: dashed; border-width: 2px; color: var(--success); border-color: rgba(16, 185, 129, 0.3);">
+                <i class="fas fa-plus"></i> Tambah Riwayat Pendidikan
+            </button>
         </div>
 
         <!-- Reward & Punishment -->
-        <div class="form-section">
-            <div class="multi-row">
-                <div>
-                    <h3><i class="fas fa-medal" style="color: #ed8936;"></i> Penghargaan</h3>
-                    <div id="reward-wrapper"></div>
-                    <button type="button" onclick="addReward()" class="btn btn-outline" style="width: 100%;"><i class="fas fa-plus"></i> Tambah Penghargaan</button>
-                </div>
-                <div>
-                    <h3><i class="fas fa-gavel" style="color: #e53e3e;"></i> Sanksi / Catatan</h3>
-                    <div id="punishment-wrapper"></div>
-                    <button type="button" onclick="addPunish()" class="btn btn-outline" style="width: 100%;"><i class="fas fa-plus"></i> Tambah Sanksi</button>
-                </div>
+        <div class="multi-row" style="margin-bottom: 30px;">
+            <div class="card" style="margin-bottom: 0;">
+                <h3 style="border-bottom: 1px solid var(--border-color); padding-bottom: 15px; font-size: 1.05rem; margin-bottom: 15px;">Penghargaan</h3>
+                <div id="reward-wrapper"></div>
+                <button type="button" onclick="addReward()" class="btn btn-outline" style="width: 100%; border-style: dashed;"><i class="fas fa-plus"></i> Tambah</button>
+            </div>
+            <div class="card" style="margin-bottom: 0;">
+                <h3 style="border-bottom: 1px solid var(--border-color); padding-bottom: 15px; font-size: 1.05rem; margin-bottom: 15px;">Sanksi & Catatan</h3>
+                <div id="punishment-wrapper"></div>
+                <button type="button" onclick="addPunish()" class="btn btn-outline" style="width: 100%; border-style: dashed;"><i class="fas fa-plus"></i> Tambah</button>
             </div>
         </div>
 
-        <div style="margin-top: 50px; text-align: right; border-top: 1px solid #e2e8f0; padding-top: 30px;">
-            <a href="data_pegawai.php" class="btn" style="color: var(--text-muted); margin-right: 15px;">Batal</a>
-            <button type="submit" name="simpan" class="btn btn-primary" style="padding: 12px 40px;"><i class="fas fa-save"></i> Simpan Data Pegawai</button>
+        <div style="background: white; border-top: 1px solid var(--border-color); padding: 15px 20px; display: flex; justify-content: flex-end; gap: 15px; align-items: center; border-radius: var(--radius-sm); box-shadow: var(--shadow-sm);">
+            <a href="data_pegawai.php" class="btn btn-outline">Batal</a>
+            <button type="submit" name="simpan" class="btn btn-primary"><i class="fas fa-save" style="margin-right: 6px;"></i> Simpan Data Pegawai</button>
         </div>
     </form>
 </div>
@@ -412,7 +506,7 @@ function addPendidikan() {
         </div>
         <div class="multi-row" style="margin-top:12px;">
             <div class="form-group"><label>Tahun Lulus</label><input type="number" name="pend_tahun[]" min="1950" max="2100" placeholder="YYYY" required></div>
-            <div class="form-group"><label>Upload Ijazah</label><input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png"></div>
+            <div class="form-group"><label>Upload Ijazah/Transkrip <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label><input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png"></div>
         </div>
     </div>`;
     document.getElementById('pendidikan-wrapper').insertAdjacentHTML('beforeend', html);
@@ -441,6 +535,33 @@ function addYayasan() {
         </div>
     </div>`;
     document.getElementById('yayasan-wrapper').insertAdjacentHTML('beforeend', html);
+}
+
+function addStatusPegawai() {
+    const html = `<div class="dynamic-item">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
+        <div class="multi-row">
+            <div class="form-group">
+                <label>Status Pegawai</label>
+                <select name="status_pegawai[]" required>
+                    <option value="">- Pilih Status -</option>
+                    <option value="Tetap">Tetap</option>
+                    <option value="Tidak Tetap">Tidak Tetap</option>
+                    <option value="Honorer">Honorer</option>
+                    <option value="Kontrak">Kontrak</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>TMT Status</label>
+                <input type="date" name="tmt_status_pegawai[]">
+            </div>
+        </div>
+        <div class="form-group" style="margin-top:10px;">
+            <label>Upload Dokumen Status</label>
+            <input type="file" name="dok_status_peg_riwayat[]" accept=".pdf,.jpg,.jpeg,.png">
+        </div>
+    </div>`;
+    document.getElementById('status-pegawai-wrapper').insertAdjacentHTML('beforeend', html);
 }
 </script>
 

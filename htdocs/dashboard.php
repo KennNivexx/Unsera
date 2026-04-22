@@ -5,6 +5,11 @@ if (!isset($_SESSION['admin_id'])) {
     exit;
 }
 
+// Greeting berdasarkan jenis kelamin
+$adminNama = $_SESSION['admin_nama'] ?? 'Admin';
+$adminJK   = $_SESSION['admin_jk'] ?? 'Laki-laki';
+$sapaan    = (strtolower($adminJK) === 'perempuan') ? 'Ibu' : 'Bapak';
+
 // Initial server-side values (used for first render)
 $totalDosen      = $conn->query("SELECT COUNT(*) as c FROM dosen")->fetch_assoc()['c'];
 $dosenTetap      = $conn->query("SELECT COUNT(*) as c FROM dosen WHERE LOWER(status_dosen)='tetap'")->fetch_assoc()['c'];
@@ -115,31 +120,6 @@ $maxYId = 0;
             font-weight: 600;
             border: 1px solid rgba(59, 130, 246, 0.2);
         }
-        /* Toast */
-        #toast-container {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .toast {
-            background: #1e293b;
-            color: white;
-            padding: 14px 20px;
-            border-radius: 12px;
-            font-size: 0.9rem;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.25);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            animation: slide-in 0.4s ease;
-            max-width: 320px;
-        }
-        .toast.success { border-left: 4px solid #22c55e; }
-        .toast.info    { border-left: 4px solid #3b82f6; }
         @keyframes slide-in {
             from { transform: translateX(100px); opacity: 0; }
             to   { transform: translateX(0); opacity: 1; }
@@ -157,100 +137,130 @@ $maxYId = 0;
 <div class="main-content">
     <?php include 'components/navbar.php'; ?>
 
-    <div class="header-section" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
-        <div>
-            <h1>Overview Kepegawaian</h1>
-            <p>Ringkasan statistik data dosen dan pegawai Universitas Serang Raya.</p>
-        </div>
-        <div class="live-bar">
-            <span class="live-dot"></span>
-            <span>Live &bull; Diperbarui: <span id="last-updated">--:--:--</span></span>
+    <!-- Welcome & Hero Section -->
+    <div class="card header-card" style="background: #ffffff; padding: 24px; margin-bottom: 24px; position: relative; overflow: hidden;">
+        <div style="position: relative; z-index: 2;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h1 class="academic-title" style="color: var(--text-main); font-size: 1.5rem; margin-bottom: 8px;">Selamat Datang <?= htmlspecialchars($sapaan) ?> <?= htmlspecialchars($adminNama) ?></h1>
+
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary); text-transform: uppercase;">Status Sistem</div>
+                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-top: 4px;">Terakhir diperbarui: <span id="last-updated">--:--:--</span></div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 30px; margin-top: 25px;">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div style="width: 44px; height: 44px; background: #ebedef; color: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;"><i class="fas fa-id-badge"></i></div>
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Dosen Aktif</div>
+                        <div class="value stat-value" id="stat-totalDosen" style="font-size: 1.5rem; font-weight: 700; color: var(--text-main);"><?= $totalDosen ?></div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div style="width: 44px; height: 44px; background: #ebedef; color: var(--success); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;"><i class="fas fa-users"></i></div>
+                    <div>
+                        <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Pegawai Aktif</div>
+                        <div class="value stat-value" id="stat-totalPegawai" style="font-size: 1.5rem; font-weight: 700; color: var(--text-main);"><?= $totalPegawai ?></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="dash-header-cards">
-        <!-- Total Dosen Card -->
-        <div class="dash-top-card">
-            <div class="dash-top-card-header">
-                <div class="info">
-                    <h3>Total Dosen</h3>
-                    <div class="value stat-value" id="stat-totalDosen"><?= $totalDosen ?></div>
-                    <div class="badges-container">
-                        <span class="badge-item" style="background:#fef3c7; color:#d97706;">Tidak Tetap: <span id="stat-dosenTidakTetap" style="margin-left:4px;"><?= $dosenTidakTetap ?></span></span>
-                        <span class="badge-item" style="background:#fee2e2; color:#ef4444;">Homebase: <span id="stat-dosenHomebase" style="margin-left:4px;"><?= $dosenHomebase ?></span></span>
-                        <span class="badge-item" style="background:#dcfce7; color:#15803d;">Tetap: <span id="stat-dosenTetap" style="margin-left:4px;"><?= $dosenTetap ?></span></span>
-                    </div>
-                </div>
-                <div class="icon-box bg-blue-light"><i class="fas fa-chalkboard-teacher"></i></div>
+    <!-- Stats Breakdown Section -->
+    <div class="dash-charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; margin-bottom: 24px;">
+        <!-- Dosen Distribution -->
+        <div class="card">
+            <div class="card-title-box" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 18px;">
+                <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-main); font-weight: 600;">Distribusi Dosen</h3>
             </div>
-            <!-- Bar Chart Dosen dipindah kesini -->
-            <div style="height: 220px; width: 100%; border-top: 1px dashed #e2e8f0; padding-top: 20px; margin-top: auto;">
+            <div style="height: 300px; width: 100%;">
                 <canvas id="grafikDosen"></canvas>
             </div>
+            <div class="badges-container" style="display: flex; justify-content: center; gap: 15px; margin-top: 20px; padding-top: 15px; border-top: 1px solid #f1f5f9;">
+                <div style="text-align: center;">
+                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Tetap</div>
+                    <div id="stat-dosenTetap" style="font-size: 1.2rem; font-weight: 800; color: #10b981;"><?= $dosenTetap ?></div>
+                </div>
+                <div style="text-align: center; border-left: 1px solid #e2e8f0; padding-left: 15px;">
+                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Tidak Tetap</div>
+                    <div id="stat-dosenTidakTetap" style="font-size: 1.2rem; font-weight: 800; color: #f59e0b;"><?= $dosenTidakTetap ?></div>
+                </div>
+                <div style="text-align: center; border-left: 1px solid #e2e8f0; padding-left: 15px;">
+                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Homebase</div>
+                    <div id="stat-dosenHomebase" style="font-size: 1.2rem; font-weight: 800; color: #ef4444;"><?= $dosenHomebase ?></div>
+                </div>
+            </div>
         </div>
 
-        <!-- Total Pegawai Card -->
-        <div class="dash-top-card">
-            <div class="dash-top-card-header">
-                <div class="info">
-                    <h3>Total Pegawai</h3>
-                    <div class="value stat-value" id="stat-totalPegawai"><?= $totalPegawai ?></div>
-                    <div class="badges-container">
-                        <span class="badge-item" style="background:#fef3c7; color:#d97706;">Tidak Tetap: <span id="stat-pegawaiTidakTetap" style="margin-left:4px;"><?= $pegawaiTidakTetap ?></span></span>
-                        <span class="badge-item" style="background:#dcfce7; color:#15803d;">Tetap: <span id="stat-pegawaiTetap" style="margin-left:4px;"><?= $pegawaiTetap ?></span></span>
-                    </div>
-                </div>
-                <div class="icon-box bg-green-light"><i class="fas fa-users-cog"></i></div>
+        <!-- Pegawai Distribution -->
+        <div class="card">
+            <div class="card-title-box" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 18px;">
+                <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-main); font-weight: 600;">Distribusi Pegawai</h3>
             </div>
-            <!-- Bar Chart Pegawai dipindah kesini -->
-            <div style="height: 220px; width: 100%; border-top: 1px dashed #e2e8f0; padding-top: 20px; margin-top: auto;">
+            <div style="height: 300px; width: 100%;">
                 <canvas id="grafikPegawai"></canvas>
             </div>
+            <div class="badges-container" style="display: flex; justify-content: center; gap: 25px; margin-top: 20px; padding-top: 15px; border-top: 1px solid #f1f5f9;">
+                <div style="text-align: center;">
+                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Tetap</div>
+                    <div id="stat-pegawaiTetap" style="font-size: 1.2rem; font-weight: 800; color: #10b981;"><?= $pegawaiTetap ?></div>
+                </div>
+                <div style="text-align: center; border-left: 1px solid #e2e8f0; padding-left: 25px;">
+                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Tidak Tetap</div>
+                    <div id="stat-pegawaiTidakTetap" style="font-size: 1.2rem; font-weight: 800; color: #f59e0b;"><?= $pegawaiTidakTetap ?></div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Jabatan Akademik (Full Width & Menarik) -->
-    <div class="card stat-card" style="margin-bottom: 24px;">
-        <div class="card-title-box" style="margin-bottom: 15px;">
-            <div class="stat-icon bg-purple-light" style="width:40px;height:40px;font-size:1.2rem;margin-bottom:0;"><i class="fas fa-user-graduate"></i></div>
-            <h3>Rincian Jabatan Akademik Dosen</h3>
-        </div>
-        <div class="jabfung-list" id="jabfung-breakdown" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-            <?php if (!empty($jabfungBreakdown)): ?>
-                <?php foreach ($jabfungBreakdown as $jab => $jml): ?>
-                    <div style="background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%); border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: transform 0.2s;">
-                        <i class="fas fa-award" style="color: var(--purple); font-size: 1.8rem; margin-bottom: 12px;"></i>
-                        <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-color); margin-bottom: 4px;"><?= htmlspecialchars($jab) ?></span>
-                        <strong style="font-size: 1.4rem; color: var(--primary); font-weight: 800;"><?= $jml ?> <span style="font-size: 0.8rem; font-weight: 500; color: var(--text-muted);">Orang</span></strong>
+    <div class="dash-third-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+        <!-- Jabatan Akademik (Achievements Style) -->
+        <div class="card">
+            <div class="card-title-box" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 18px;">
+                <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-main); font-weight: 600;">Jabatan Akademik Dosen</h3>
+            </div>
+            <div class="jabfung-list" id="jabfung-breakdown" style="display: grid; gap: 12px;">
+                <?php if (!empty($jabfungBreakdown)): ?>
+                    <?php foreach ($jabfungBreakdown as $jab => $jml): ?>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;">
+                            <div style="display:flex; align-items:center; gap: 15px;">
+                                <div style="width: 10px; height: 10px; background: #7e22ce; border-radius: 50%;"></div>
+                                <span style="font-size: 0.95rem; font-weight: 700; color: var(--text-main);"><?= htmlspecialchars($jab) ?></span>
+                            </div>
+                            <div style="background: #ede9fe; color: #7e22ce; padding: 4px 14px; border-radius: 30px; font-weight: 800; font-size: 1.1rem;"><?= $jml ?></div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="empty-state">
+                        <i class="fas fa-certificate"></i>
+                        <h4>Belum Ada Data</h4>
+                        <p>Data jabatan akademik dosen belum tersedia dalam sistem.</p>
                     </div>
-                <?php endforeach; ?>
-            <?php else: ?>
-                <div style="grid-column: 1 / -1; text-align: center; color:var(--text-muted); padding: 20px;">Belum ada data jabatan akademik.</div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <!-- Second Row: Pies -->
-    <div class="dash-third-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 24px;">
-        <!-- Doughnut Pie Dosen -->
-        <div class="card stat-card" style="margin-bottom:0;">
-            <div class="card-title-box">
-                <div class="stat-icon bg-blue-light" style="width:40px;height:40px;font-size:1.2rem;margin-bottom:0;"><i class="fas fa-chart-pie"></i></div>
-                <h3>Proporsi Dosen</h3>
-            </div>
-            <div style="height: 250px; width: 100%; display: flex; justify-content: center;">
-                <canvas id="grafikPieDosen"></canvas>
+                <?php endif; ?>
             </div>
         </div>
 
-        <!-- Doughnut Pie Pegawai -->
-        <div class="card stat-card" style="margin-bottom:0;">
-            <div class="card-title-box">
-                <div class="stat-icon bg-green-light" style="width:40px;height:40px;font-size:1.2rem;margin-bottom:0;"><i class="fas fa-chart-pie"></i></div>
-                <h3>Proporsi Pegawai</h3>
+        <!-- Proporsi Dosen & Pegawai -->
+        <div class="card">
+            <div class="card-title-box" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 18px;">
+                <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-main); font-weight: 600;">Ringkasan Proporsi</h3>
             </div>
-            <div style="height: 250px; width: 100%; display: flex; justify-content: center;">
-                <canvas id="grafikPiePegawai"></canvas>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div style="text-align: center;">
+                    <div style="height: 180px; width: 100%;">
+                        <canvas id="grafikPieDosen"></canvas>
+                    </div>
+                    <p style="font-size: 0.8rem; font-weight: 700; color: #64748b; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Dosen</p>
+                </div>
+                <div style="text-align: center;">
+                    <div style="height: 180px; width: 100%;">
+                        <canvas id="grafikPiePegawai"></canvas>
+                    </div>
+                    <p style="font-size: 0.8rem; font-weight: 700; color: #64748b; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Pegawai</p>
+                </div>
             </div>
         </div>
     </div>

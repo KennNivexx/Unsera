@@ -1,8 +1,9 @@
 <?php
 $current_page = basename($_SERVER['PHP_SELF']);
 $dosen_pages  = ['input_dosen.php','daftar_dosen.php','form_edit_dosen.php','edit_dosen.php','detail_dosen.php','hapus_dosen.php'];
-$pegawai_pages = ['input_pegawai.php','data_pegawai.php','detail_pegawai.php','edit_pegawai.php'];
-$surat_pages = ['jenis_surat.php','data_surat.php','tambah_jenis_surat.php'];
+$pegawai_pages = ['input_pegawai.php','data_pegawai.php','detail_pegawai.php','edit_pegawai.php','form_edit_pegawai.php'];
+$surat_pages = ['jenis_surat.php','data_surat.php','tambah_jenis_surat.php','struktur_organisasi.php'];
+$inactive_pages = ['data_tidak_aktif.php'];
 ?>
 <div class="sidebar">
     <div class="sidebar-brand">
@@ -80,6 +81,31 @@ $surat_pages = ['jenis_surat.php','data_surat.php','tambah_jenis_surat.php'];
             </ul>
         </li>
 
+        <li>
+            <a href="#" onclick="toggleSubmenu('sub-inactive', this); return false;"
+               class="submenu-toggle <?= in_array($current_page, $inactive_pages) ? 'open' : '' ?>">
+                <i class="fas fa-user-slash"></i> Data Tidak Aktif
+            </a>
+            <ul id="sub-inactive" class="submenu <?= in_array($current_page, $inactive_pages) ? 'show' : '' ?>">
+                <li>
+                    <a href="data_tidak_aktif.php?type=dosen" class="<?= ($current_page == 'data_tidak_aktif.php' && ($_GET['type']??'') == 'dosen') ? 'active' : '' ?>">
+                        <i class="fas fa-chalkboard-teacher" style="margin-right:8px;"></i> Dosen
+                    </a>
+                </li>
+                <li>
+                    <a href="data_tidak_aktif.php?type=pegawai" class="<?= ($current_page == 'data_tidak_aktif.php' && ($_GET['type']??'') == 'pegawai') ? 'active' : '' ?>">
+                        <i class="fas fa-users-cog" style="margin-right:8px;"></i> Pegawai
+                    </a>
+                </li>
+            </ul>
+        </li>
+
+        <li>
+            <a href="struktur_organisasi.php" class="<?= $current_page == 'struktur_organisasi.php' ? 'active' : '' ?>">
+                <i class="fas fa-sitemap"></i> Struktur Organisasi
+            </a>
+        </li>
+
         <li class="sidebar-label" style="margin-top: 10px;">MANAJEMEN SURAT</li>
 
         <li>
@@ -119,9 +145,14 @@ $surat_pages = ['jenis_surat.php','data_surat.php','tambah_jenis_surat.php'];
 function toggleSubmenu(id, el) {
     const sub = document.getElementById(id);
     const isOpen = sub.classList.contains('show');
-    document.querySelectorAll('.sidebar .submenu').forEach(s => s.classList.remove('show'));
-    document.querySelectorAll('.sidebar .submenu-toggle').forEach(t => t.classList.remove('open'));
-    if (!isOpen) {
+    // Close all other submenus, but not the one being toggled
+    document.querySelectorAll('.sidebar .submenu').forEach(s => { if (s.id !== id) s.classList.remove('show'); });
+    document.querySelectorAll('.sidebar .submenu-toggle').forEach(t => { if (t !== el) t.classList.remove('open'); });
+    // Toggle current
+    if (isOpen) {
+        sub.classList.remove('show');
+        el.classList.remove('open');
+    } else {
         sub.classList.add('show');
         el.classList.add('open');
     }

@@ -84,15 +84,9 @@ $breadcrumbs = [
 <div class="main-content">
     <?php include 'components/navbar.php'; ?>
 
-    <div class="header-section" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
-        <div>
-            <h1>Data Kepegawaian (Staff)</h1>
-            <p>Manajemen data tenaga kependidikan dan staf administrasi Universitas Serang Raya.</p>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--text-muted); margin-top:6px;">
-            <span style="width:9px;height:9px;background:#22c55e;border-radius:50%;box-shadow:0 0 0 0 rgba(34,197,94,0.5);animation:pulse-dot 2s infinite;display:inline-block;"></span>
-            Live &bull; Update: <span id="last-updated">--:--:--</span>
-        </div>
+    <div class="header-section" style="border-bottom: 2px solid var(--border-color); padding-bottom: 20px; margin-bottom: 30px;">
+        <h1 class="academic-title" style="font-size: 2.2rem; color: var(--text-main); margin-bottom: 8px;">Tenaga Kependidikan</h1>
+        <p style="color: var(--text-muted); font-size: 1rem;">Data induk staf administrasi dan tenaga kependidikan Universitas Serang Raya.</p>
     </div>
 
     <div class="card">
@@ -109,53 +103,63 @@ $breadcrumbs = [
                     <tr>
                         <th style="width: 50px;">No</th>
                         <th>Nama Lengkap</th>
-                        <th>Jabatan / Unit Kerja</th>
+                        <th>Jabatan</th>
+                        <th>Unit Kerja</th>
                         <th>Status</th>
                         <th style="text-align: center; width: 120px;">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php
-                    $no = 1;
                     if ($data && $data->num_rows > 0) {
+                        $no = 1;
                         while($row = $data->fetch_assoc()) {
-                            $badgeClass = (strtolower($row['jenis_pegawai'] ?? '') == 'tetap') ? 'badge-success' : 'badge-warning';
+                            $st = strtolower($row['status_pegawai'] ?? '');
+                            $badgeClass = 'badge-success';
+                            if($st === 'tidak tetap' || $st === 'tdk tetap') $badgeClass = 'badge-warning';
+                            
                             $initials = strtoupper(substr($row['nama_lengkap'], 0, 1));
                     ?>
                     <tr>
-                        <td><?= $no++ ?></td>
+                        <td><span style="font-weight: 700; color: #94a3b8;"><?= $no++ ?></span></td>
                         <td>
-                        <div class="name-cell">
+                            <div class="name-cell">
                                 <?php if(!empty($row['foto_profil'])): ?>
                                     <img src="<?= htmlspecialchars($row['foto_profil']) ?>" alt="Foto" class="avatar-img">
                                 <?php else: ?>
-                                    <div class="avatar-circle"><?= $initials ?></div>
+                                    <div class="avatar-circle" style="background: var(--primary-soft); color: var(--primary); border: 1px solid rgba(59, 130, 246, 0.2);"><?= $initials ?></div>
                                 <?php endif; ?>
                                 <div>
-                                    <a href="detail_pegawai.php?id=<?= $row['id'] ?>" style="text-decoration: none; color: var(--primary); font-weight: 600;">
+                                    <a href="detail_pegawai.php?id=<?= $row['id'] ?>" style="text-decoration: none; color: var(--text-main); font-weight: 700; font-size: 1rem;">
                                         <?= htmlspecialchars($row['nama_lengkap']) ?>
                                     </a>
-                                    <div style="font-size: 0.75rem; color: var(--text-muted);">ID: <?= str_pad($row['id'], 5, '0', STR_PAD_LEFT) ?></div>
+                                    <div style="font-size: 0.8rem; color: #64748b; font-weight: 500;">ID: <?= str_pad($row['id'], 5, '0', STR_PAD_LEFT) ?></div>
                                 </div>
                             </div>
                         </td>
+                        <td><div style="font-weight: 600; color: var(--text-main); font-size: 0.95rem;"><?= htmlspecialchars($row['posisi_jabatan'] ?? '-') ?></div></td>
+                        <td><div style="color: var(--text-muted); font-size:0.85rem; font-weight: 500;"><?= htmlspecialchars($row['unit_kerja'] ?? '-') ?></div></td>
                         <td>
-                            <div style="font-weight: 500; color: var(--text-main);"><?= htmlspecialchars($row['posisi_jabatan'] ?? '-') ?></div>
-                            <div style="font-size: 0.8rem; color: var(--text-muted);"><?= htmlspecialchars($row['unit_kerja'] ?? '-') ?></div>
+                            <span class="badge <?= $badgeClass ?>" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;"><?= htmlspecialchars($row['status_pegawai'] ?? 'N/A') ?></span>
                         </td>
-                        <td>
-                            <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($row['jenis_pegawai'] ?? 'N/A') ?></span>
-                        </td>
-                        <td>
+                        <td style="text-align: center;">
                             <div class="action-btns">
-                                <a href="detail_pegawai.php?id=<?= $row['id'] ?>" class="btn-icon" title="Detail" style="color: var(--primary);"><i class="fas fa-eye"></i> Detail</a>
+                                <a href="detail_pegawai.php?id=<?= $row['id'] ?>" class="btn" style="padding: 6px 14px; font-size: 0.75rem; background: var(--primary-soft); color: var(--primary); border: 1px solid rgba(30, 58, 138, 0.1);">
+                                    <i class="fas fa-eye"></i> Detail
+                                </a>
                             </div>
                         </td>
                     </tr>
                     <?php 
                         }
                     } else {
-                        echo "<tr><td colspan='5' style='text-align: center; padding: 40px; color: var(--text-muted);'>Belum ada data pegawai yang sesuai.</td></tr>";
+                        echo "<tr><td colspan='6'>
+                            <div class='empty-state'>
+                                <i class='fas fa-user-slash'></i>
+                                <h4>Data Pegawai Kosong</h4>
+                                <p>Belum ada data pegawai yang terdaftar atau sesuai kriteria.</p>
+                            </div>
+                        </td></tr>";
                     }
                     ?>
                 </tbody>
@@ -200,29 +204,49 @@ function renderTable(rows) {
     const tbody = document.querySelector('.data-table tbody');
     if (!tbody) return;
     if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted);">Belum ada data pegawai yang sesuai.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6">
+            <div class="empty-state">
+                <i class="fas fa-user-slash"></i>
+                <h4>Data Pegawai Kosong</h4>
+                <p>Belum ada data pegawai yang terdaftar atau sesuai kriteria.</p>
+            </div>
+        </td></tr>`;
         return;
     }
     tbody.innerHTML = rows.map((r, i) => {
-        const badge = (r.jenis_pegawai||'').toLowerCase() === 'tetap' ? 'badge-success' : 'badge-warning';
+        const st = (r.jenis_pegawai || r.status_pegawai || '').toLowerCase();
+        let badgeClass = 'badge-success';
+        if(st === 'tidak tetap' || st === 'tdk tetap') badgeClass = 'badge-warning';
+        
         const idStr = String(r.id).padStart(5, '0');
-        return `<tr>
-            <td>${i+1}</td>
+        const initials = (r.nama_lengkap || '?').charAt(0).toUpperCase();
+        
+        return `
+        <tr>
+            <td><span style="font-weight: 700; color: #94a3b8;">${i+1}</span></td>
             <td>
                 <div class="name-cell">
-                    ${r.foto_profil ? `<img src="${escHtml(r.foto_profil)}" alt="Foto" class="avatar-img">` : `<div class="avatar-circle">${(r.nama_lengkap||'?').charAt(0).toUpperCase()}</div>`}
+                    ${r.foto_profil ? `<img src="${escHtml(r.foto_profil)}" alt="Foto" class="avatar-img">` : `<div class="avatar-circle" style="background: var(--primary-soft); color: var(--primary); border: 1px solid rgba(59, 130, 246, 0.2);">${initials}</div>`}
                     <div>
-                        <a href="detail_pegawai.php?id=${r.id}" style="text-decoration:none;color:var(--primary);font-weight:600;">${escHtml(r.nama_lengkap)}</a>
-                        <div style="font-size:0.75rem;color:var(--text-muted);">ID: ${idStr}</div>
+                        <a href="detail_pegawai.php?id=${r.id}" style="text-decoration: none; color: var(--text-main); font-weight: 700; font-size: 1rem;">
+                            ${escHtml(r.nama_lengkap)}
+                        </a>
+                        <div style="font-size: 0.8rem; color: #64748b; font-weight: 500;">ID: ${idStr}</div>
                     </div>
                 </div>
             </td>
+            <td><div style="font-weight: 600; color: var(--text-main); font-size: 0.95rem;">${escHtml(r.posisi_jabatan || '-')}</div></td>
+            <td><div style="color: var(--text-muted); font-size: 0.85rem; font-weight: 500;">${escHtml(r.unit_kerja || '-')}</div></td>
             <td>
-                <div style="font-weight:500;color:var(--text-main);">${escHtml(r.posisi_jabatan||'-')}</div>
-                <div style="font-size:0.8rem;color:var(--text-muted);">${escHtml(r.unit_kerja||'-')}</div>
+                <span class="badge ${badgeClass}" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">${escHtml(r.jenis_pegawai || r.status_pegawai || 'N/A')}</span>
             </td>
-            <td><span class="badge ${badge}">${escHtml(r.jenis_pegawai||'N/A')}</span></td>
-            <td><div class="action-btns"><a href="detail_pegawai.php?id=${r.id}" class="btn-icon" style="color:var(--primary);"><i class="fas fa-eye"></i> Detail</a></div></td>
+            <td style="text-align: center;">
+                <div class="action-btns">
+                    <a href="detail_pegawai.php?id=${r.id}" class="btn" style="padding: 6px 14px; font-size: 0.75rem; background: var(--primary-soft); color: var(--primary); border: 1px solid rgba(30, 58, 138, 0.1);">
+                        <i class="fas fa-eye"></i> Detail
+                    </a>
+                </div>
+            </td>
         </tr>`;
     }).join('');
 }

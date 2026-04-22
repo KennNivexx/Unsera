@@ -74,6 +74,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     $status_keaktifan = $_POST['status_keaktifan'] ?? null;
     $keterangan_keaktifan = '';
+    $tgl_mulai_tidak_bekerja = !empty($_POST['tgl_mulai_tidak_bekerja']) ? $_POST['tgl_mulai_tidak_bekerja'] : null;
+
     if($status_keaktifan === 'Tidak Aktif') {
         $keterangan_keaktifan = $_POST['ket_tidak_aktif'] ?? '';
         if($keterangan_keaktifan === 'Lainnya') {
@@ -86,13 +88,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         foreach($_POST['status_dosen'] as $i => $std) {
             if(trim($std) !== '') {
                 $tmt = !empty($_POST['tmt_status'][$i]) ? $_POST['tmt_status'][$i] : null;
+                $tgl_berhenti = !empty($_POST['tgl_berhenti_status'][$i]) ? $_POST['tgl_berhenti_status'][$i] : null;
                 $old_file = $_POST['existing_dok_status'][$i] ?? '';
                 $filename = $old_file;
                 if(!empty($_FILES['dok_status']['name'][$i])) {
                     $filename = 'uploads/'.time().'_status_'.basename($_FILES['dok_status']['name'][$i]);
                     move_uploaded_file($_FILES['dok_status']['tmp_name'][$i], $filename);
                 }
-                $status_list[] = ['status' => $std, 'tmt' => $tmt, 'dokumen' => $filename];
+                $status_list[] = ['status' => $std, 'tmt' => $tmt, 'tgl_berhenti' => $tgl_berhenti, 'dokumen' => $filename];
             }
         }
     }
@@ -213,11 +216,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         gol_lldikti = ?, tmt_gol_lldikti = ?, dok_gol_lldikti = ?, 
         gol_yayasan = ?, tmt_gol_yayasan = ?, dok_gol_yayasan = ?, 
         homebase_prodi = ?, unit_kerja = ?, 
-        no_serdos = ?, dok_serdos = ?, riwayat_pendidikan = ?, foto_profil = ?, status_keaktifan = ?, keterangan_keaktifan = ?
+        no_serdos = ?, dok_serdos = ?, riwayat_pendidikan = ?, foto_profil = ?, status_keaktifan = ?, keterangan_keaktifan = ?, tgl_mulai_tidak_bekerja = ?
         WHERE id = ?";
 
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("ssssssssssssssssssssssssssssssssssi", 
+    $stmt->bind_param("sssssssssssssssssssssssssssssssssssi", 
         $nama, $alamat, $ttl_tempat, $ttl_tanggal, $nip, $nidn, $nuptk, $status_dosen, $status_pribadi, 
         $docs['dok_ktp'], $docs['dok_kk'],
         $jenis_dosen, $jabatan_struktural, $tmk, $tmtk, $ket_tidak_kerja, $docs['dok_tidak_kerja'],
@@ -225,10 +228,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $gol_lldikti, $tmt_gol_lldikti, $dok_gol_lldikti_main,
         $gol_yayasan, $tmt_gol_yayasan, $dok_gol_yayasan_main,
         $homebase_prodi, $unit_kerja, 
-        $no_serdos, $docs['dok_serdos'], $riwayat_pendidikan, $foto_profil, $status_keaktifan, $keterangan_keaktifan, $id
+        $no_serdos, $docs['dok_serdos'], $riwayat_pendidikan, $foto_profil, $status_keaktifan, $keterangan_keaktifan, $tgl_mulai_tidak_bekerja, $id
     );
     
     if ($stmt->execute()) {
+        // Handle Penugasan History (Struktural/Non)
+        $old_jenis = $data['jenis_dosen'] ?? 'Non Struktural';
+        $old_jab_struk = $data['jabatan_struktural'] ?? '';
+        $old_tmk = $data['tmk'] ?? null;
+        $old_tmtk = $data['tmtk'] ?? null;
+        
+        if ($old_jenis != $jenis_dosen || $old_jab_struk != $jabatan_struktural || $old_tmk != $tmk || $old_tmtk != $tmtk) {
+            // If it was Struktural, Archive it
+            if ($old_jenis == 'Struktural' || !empty($old_jab_struk)) {
+                $st_pen = $conn->prepare("INSERT INTO penugasan_dosen_riwayat (dosen_id, jenis_dosen, jabatan_struktural, tmt, dokumen) VALUES (?, ?, ?, ?, ?)");
+                $p_dok = $data['dok_tidak_kerja'] ?? ''; // simplified, use current relevant doc
+                $st_pen->bind_param("issss", $id, $old_jenis, $old_jab_struk, $old_tmk, $p_dok);
+                $st_pen->execute();
+                $st_pen->close();
+            }
+        }
+
         // Handle Rewards & Punishments
         $conn->query("DELETE FROM reward WHERE dosen_id = $id");
         if (!empty($_POST['reward_deskripsi'])) {
@@ -271,8 +291,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Handle Histories
         $conn->query("DELETE FROM status_dosen_riwayat WHERE dosen_id = $id");
         foreach ($status_list as $stt) {
-            $st = $conn->prepare("INSERT INTO status_dosen_riwayat (dosen_id, status_dosen, tmt, dokumen) VALUES (?, ?, ?, ?)");
-            $st->bind_param("isss", $id, $stt['status'], $stt['tmt'], $stt['dokumen']);
+            $st = $conn->prepare("INSERT INTO status_dosen_riwayat (dosen_id, status_dosen, tmt, tgl_berhenti, dokumen) VALUES (?, ?, ?, ?, ?)");
+            $st->bind_param("issss", $id, $stt['status'], $stt['tmt'], $stt['tgl_berhenti'], $stt['dokumen']);
             $st->execute();
             $st->close();
         }
@@ -419,16 +439,19 @@ $breadcrumbs = [
             <div class="multi-row" style="margin-top: 16px;">
                 <div class="form-group">
                     <label>NIP</label>
-                    <input type="text" name="nip" value="<?= htmlspecialchars($data['nip'] ?? '') ?>" placeholder="Nomor Induk Pegawai (Optional)">
+                    <input type="text" name="nip" id="inp_nip" value="<?= htmlspecialchars($data['nip'] ?? '') ?>" placeholder="Nomor Induk Pegawai (Optional)">
+                    <small id="warn_nip" style="color:var(--danger); display:none; margin-top:4px;"><i class="fas fa-exclamation-triangle"></i> NIP sudah terdaftar!</small>
                 </div>
                 <div class="form-group">
                     <label>NIDN</label>
-                    <input type="text" name="nidn" value="<?= htmlspecialchars($data['nidn'] ?? '') ?>" placeholder="Nomor Induk Dosen Nasional (Optional)">
+                    <input type="text" name="nidn" id="inp_nidn" value="<?= htmlspecialchars($data['nidn'] ?? '') ?>" placeholder="Nomor Induk Dosen Nasional (Optional)">
+                    <small id="warn_nidn" style="color:var(--danger); display:none; margin-top:4px;"><i class="fas fa-exclamation-triangle"></i> NIDN sudah terdaftar!</small>
                 </div>
             </div>
             <div class="form-group" style="margin-top: 16px;">
                 <label>NUPTK</label>
-                <input type="text" name="nuptk" value="<?= htmlspecialchars($data['nuptk'] ?? '') ?>" placeholder="Nomor Unik Pendidik dan Tenaga Kependidikan (Optional)">
+                <input type="text" name="nuptk" id="inp_nuptk" value="<?= htmlspecialchars($data['nuptk'] ?? '') ?>" placeholder="Nomor Unik Pendidik dan Tenaga Kependidikan (Optional)">
+                <small id="warn_nuptk" style="color:var(--danger); display:none; margin-top:4px;"><i class="fas fa-exclamation-triangle"></i> NUPTK sudah terdaftar!</small>
             </div>
 
             <div class="form-group" style="margin-top: 16px;">
@@ -463,17 +486,6 @@ $breadcrumbs = [
         <div class="card" style="margin-bottom:20px;">
             <h3><i class="fas fa-briefcase"></i> Status Kepegawaian</h3>
 
-            <div class="multi-row" style="margin-bottom:20px;">
-                <div class="form-group">
-                    <label>Homebase Prodi</label>
-                    <input type="text" name="homebase_prodi" value="<?= htmlspecialchars($data['homebase_prodi']) ?>" required>
-                </div>
-                <div class="form-group">
-                    <label>Unit Kerja</label>
-                    <input type="text" name="unit_kerja" value="<?= htmlspecialchars($data['unit_kerja']) ?>" required>
-                </div>
-            </div>
-
             <div id="status-wrapper">
                 <?php if (count($status_dosens) > 0): ?>
                     <?php foreach($status_dosens as $std): ?>
@@ -488,10 +500,14 @@ $breadcrumbs = [
                                     <option value="Homebase" <?= $std['status_dosen'] == 'Homebase' ? 'selected' : '' ?>>Homebase</option>
                                 </select>
                             </div>
-                            <div class="multi-row" style="margin-top:12px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top:12px;">
                                 <div class="form-group">
-                                    <label>TMT <span style="color:var(--text-muted); font-weight:400;">(Tanggal Mulai Bekerja)</span></label>
+                                    <label>Terhitung Mulai Bekerja</label>
                                     <input type="date" name="tmt_status[]" value="<?= $std['tmt'] ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label>Tanggal Berhenti <span style="color:var(--text-muted); font-weight:400;">(Jika Ada)</span></label>
+                                    <input type="date" name="tgl_berhenti_status[]" value="<?= $std['tgl_berhenti'] ?? '' ?>">
                                 </div>
                                 <div class="form-group">
                                     <label>Upload Dokumen <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
@@ -517,10 +533,14 @@ $breadcrumbs = [
                                 <option value="Homebase" <?= $data['status_dosen'] == 'Homebase' ? 'selected' : '' ?>>Homebase</option>
                             </select>
                         </div>
-                        <div class="multi-row" style="margin-top:12px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top:12px;">
                             <div class="form-group">
-                                <label>TMT <span style="color:var(--text-muted); font-weight:400;">(Tanggal Mulai Bekerja)</span></label>
+                                <label>Terhitung Mulai Bekerja</label>
                                 <input type="date" name="tmt_status[]">
+                            </div>
+                            <div class="form-group">
+                                <label>Tanggal Berhenti <span style="color:var(--text-muted); font-weight:400;">(Jika Ada)</span></label>
+                                <input type="date" name="tgl_berhenti_status[]">
                             </div>
                             <div class="form-group">
                                 <label>Upload Dokumen <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
@@ -533,9 +553,21 @@ $breadcrumbs = [
             </div>
             <button type="button" onclick="addStatusDosen()" class="btn btn-outline" style="width:100%; margin-bottom:15px;"><i class="fas fa-plus"></i> Tambah Riwayat Status Dosen</button>
 
-            <!-- Jenis Penugasan -->
+            <!-- Moved Homebase & Unit Kerja Here -->
+            <div class="multi-row" style="margin-bottom:20px;">
+                <div class="form-group">
+                    <label>Homebase Prodi</label>
+                    <input type="text" name="homebase_prodi" value="<?= htmlspecialchars($data['homebase_prodi']) ?>" required>
+                </div>
+                <div class="form-group">
+                    <label>Unit Kerja</label>
+                    <input type="text" name="unit_kerja" value="<?= htmlspecialchars($data['unit_kerja']) ?>" required>
+                </div>
+            </div>
+
+            <!-- SECTION 3: Jabatan Dosen -->
             <div id="area_jenis_penugasan" style="margin-top:8px; background:#f0f6ff; border:1.5px solid #bfdbfe; border-radius:10px; padding:20px;">
-                <label style="font-weight:700; font-size:0.9rem; color:var(--primary); display:block; margin-bottom:12px;"><i class="fas fa-tag"></i> Jenis Penugasan</label>
+                <label style="font-weight:700; font-size:0.9rem; color:var(--primary); display:block; margin-bottom:12px;"><i class="fas fa-tag"></i> Jabatan Dosen</label>
                 <div style="display:flex; gap:24px; flex-wrap:wrap;">
                     <label class="radio-label"><input type="radio" name="jenis_dosen" value="Non Struktural" <?= $data['jenis_dosen'] == 'Non Struktural' || empty($data['jenis_dosen']) ? 'checked' : '' ?>> Non Struktural</label>
                     <label class="radio-label"><input type="radio" name="jenis_dosen" value="Struktural" <?= $data['jenis_dosen'] == 'Struktural' ? 'checked' : '' ?>> Struktural</label>
@@ -545,44 +577,34 @@ $breadcrumbs = [
                     <label style="font-weight:600; font-size:0.85rem;">Nama Jabatan Struktural</label>
                     <input type="text" name="jabatan_struktural" value="<?= htmlspecialchars($data['jabatan_struktural']) ?>" placeholder="Contoh: Wakil Rektor I" style="margin-top:6px;">
                 </div>
-                
-                <!-- TMK/TMTK that responds to Jenis Penugasan -->
-                <div class="multi-row" style="margin-top:20px;">
-                    <div class="form-group <?= $data['jenis_dosen'] == 'Struktural' ? '' : 'hidden' ?>" id="grp_tmk">
+
+                <!-- Struktural: Terhitung Mulai Bertugas -->
+                <div class="<?= ($data['jenis_dosen'] == 'Struktural') ? '' : 'hidden' ?>" id="group_tmk" style="margin-top:16px;">
+                    <div class="form-group">
                         <label>Terhitung Mulai Bertugas (TMBT)</label>
-                        <input type="date" name="tmk" id="tmk_input" value="<?= $data['tmk'] ?>">
+                        <input type="date" name="tmk" id="tmk_input" value="<?= $data['terhitung_mulai_kerja'] ?? ($data['tmk'] ?? '') ?>">
                     </div>
-                    <div class="form-group hidden" id="grp_tmtk">
-                        <!-- TMTK is hidden from Structural path based on requirements, 
-                             But if shifting back to non-struktural we show TMTBT -->
+                    <div class="form-group" style="margin-top:10px;">
+                        <label style="font-size:0.8rem; font-weight:700;">Upload Dokumen Penugasan Struktural</label>
+                        <input type="file" name="dok_penugasan_struktural" accept=".pdf,.jpg,.png">
+                    </div>
+                </div>
+
+                <!-- Non Struktural: Terhitung Mulai Tidak Bertugas -->
+                <div class="<?= ($data['jenis_dosen'] == 'Struktural') ? 'hidden' : '' ?>" id="group_tmtk" style="margin-top:16px;">
+                    <div class="form-group">
                         <label>Terhitung Mulai Tidak Bertugas (TMTBT)</label>
-                        <input type="date" name="tmtk" id="tmtk_input" value="<?= $data['tmtk'] ?>">
+                        <input type="date" name="tmtk" id="tmtk_input" value="<?= $data['terhitung_mulai_tidak_kerja'] ?? ($data['tmtk'] ?? '') ?>">
                     </div>
-                    <div class="form-group <?= $data['jenis_dosen'] == 'Struktural' ? '' : 'hidden' ?>" id="grp_dok_perubahan">
-                        <label>Upload Dokumen Status <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
+                    <div class="form-group" style="margin-top:10px;">
+                        <label style="font-size:0.8rem; font-weight:700;">Upload Dokumen Penugasan Non Struktural</label>
                         <input type="file" name="dok_tidak_kerja" accept=".pdf,.jpg,.png">
-                        <?php if($data['dok_tidak_kerja']): ?>
-                            <span class="file-current"><i class="fas fa-file-pdf"></i> <?= basename($data['dok_tidak_kerja']) ?></span>
+                        <?php if(!empty($data['dokumen_tidak_kerja'] ?? $data['dok_tidak_kerja'] ?? '')): ?>
+                            <a href="<?= $data['dokumen_tidak_kerja'] ?? $data['dok_tidak_kerja'] ?>" target="_blank" class="file-current" style="display:block; margin-top:4px;"><i class="fas fa-file-pdf"></i> Lihat Dokumen</a>
                         <?php endif; ?>
                     </div>
                 </div>
             </div>
-
-            <!-- Area TMTK (Pemberhentian) di comment/dihapus sesuai alur baru, tapi biar aman kita hidden saja -->
-            <div id="area_tmtk" class="hidden" style="background:#fff5f5; border:1.5px solid #fecaca; border-radius:10px; padding:20px; margin-top:8px;">
-                <label style="font-weight:700; font-size:0.9rem; color:var(--danger); display:block; margin-bottom:12px;"><i class="fas fa-exclamation-circle"></i> Informasi Pemberhentian</label>
-                <div class="form-group">
-                    <label>Alasan Berhenti</label>
-                    <select name="ket_tidak_kerja">
-                        <option value="">- Pilih Alasan -</option>
-                        <option value="Putus Kontrak" <?= $data['ket_tidak_kerja'] == 'Putus Kontrak' ? 'selected' : '' ?>>Putus Kontrak</option>
-                        <option value="Diberhentikan" <?= $data['ket_tidak_kerja'] == 'Diberhentikan' ? 'selected' : '' ?>>Diberhentikan</option>
-                        <option value="Resign" <?= $data['ket_tidak_kerja'] == 'Resign' ? 'selected' : '' ?>>Resign</option>
-                        <option value="Pensiun" <?= $data['ket_tidak_kerja'] == 'Pensiun' ? 'selected' : '' ?>>Pensiun</option>
-                    </select>
-                </div>
-            </div>
-
         </div>
 
         <!-- SECTION 3: Jabatan Akademik Dosen -->
@@ -596,7 +618,7 @@ $breadcrumbs = [
                             <div class="form-group">
                                 <label>Jabatan Akademik Dosen <span style="color:var(--text-muted); font-weight:400; font-size:0.85rem;">(TMT Jabfung)</span></label>
                                 <select name="jabfung_akademik[]">
-                                    <option value="">- Pilih Jabatan -</option>
+                                    <option value="">- Pilih Jabatan Akademik -</option>
                                     <option value="Asisten Ahli" <?= $jf['jabatan'] == 'Asisten Ahli' ? 'selected' : '' ?>>Asisten Ahli</option>
                                     <option value="Lektor" <?= $jf['jabatan'] == 'Lektor' ? 'selected' : '' ?>>Lektor</option>
                                     <option value="Lektor Kepala" <?= $jf['jabatan'] == 'Lektor Kepala' ? 'selected' : '' ?>>Lektor Kepala</option>
@@ -607,6 +629,11 @@ $breadcrumbs = [
                                 <div class="form-group">
                                     <label>TMT Jabfung <span style="color:var(--text-muted); font-weight:400;">(Tanggal Mulai Berlaku)</span></label>
                                     <input type="date" name="tmt_jabfung[]" value="<?= $jf['tmt'] ?>">
+                                    <small style="color:var(--text-muted); font-size:0.75rem; margin-top:4px; display:block;">Pilih tanggal surat keputusan jabatan fungsional mulai berlaku.</small>
+                                </div>
+                                <div class="form-group">
+                                    <label>Keterangan</label>
+                                    <input type="text" name="ket_jabfung[]" value="<?= htmlspecialchars($jf['keterangan'] ?? '') ?>" placeholder="Keterangan tambahan (opsional)">
                                 </div>
                                 <div class="form-group">
                                     <label>Upload SK Jabfung <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
@@ -626,7 +653,8 @@ $breadcrumbs = [
                         <div class="form-group">
                             <label>Jabatan Akademik Dosen <span style="color:var(--text-muted); font-weight:400; font-size:0.85rem;">(TMT Jabfung)</span></label>
                             <select name="jabfung_akademik[]">
-                                <option value="">- Pilih Jabatan -</option>
+                                <option value="">- Pilih Jabatan Akademik -</option>
+                                <option value="Tenaga Pengajar">Tenaga Pengajar</option>
                                 <option value="Asisten Ahli">Asisten Ahli</option>
                                 <option value="Lektor">Lektor</option>
                                 <option value="Lektor Kepala">Lektor Kepala</option>
@@ -634,7 +662,15 @@ $breadcrumbs = [
                             </select>
                         </div>
                         <div class="multi-row" style="margin-top:12px;">
-                            <div class="form-group"><label>TMT Jabfung <span style="color:var(--text-muted); font-weight:400;">(Tanggal Mulai Berlaku)</span></label><input type="date" name="tmt_jabfung[]"></div>
+                            <div class="form-group">
+                                <label>TMT Jabfung <span style="color:var(--text-muted); font-weight:400;">(Tanggal Mulai Berlaku)</span></label>
+                                <input type="date" name="tmt_jabfung[]">
+                                <small style="color:var(--text-muted); font-size:0.75rem; margin-top:4px; display:block;">Pilih tanggal surat keputusan jabatan fungsional mulai berlaku.</small>
+                            </div>
+                            <div class="form-group">
+                                <label>Keterangan</label>
+                                <input type="text" name="ket_jabfung[]" placeholder="Keterangan tambahan (opsional)">
+                            </div>
                             <div class="form-group"><label>Upload SK Jabfung <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label><input type="file" name="dok_jabfung[]" accept=".pdf,.jpg,.png"></div>
                         </div>
                         <input type="hidden" name="existing_dok_jabfung[]" value="">
@@ -789,9 +825,12 @@ $breadcrumbs = [
                         </div>
                         <div class="multi-row" style="margin-top:12px;">
                             <div class="form-group"><label>Tahun Lulus</label><input type="number" name="pend_tahun[]" min="1950" max="2100" placeholder="YYYY" required></div>
-                            <div class="form-group"><label>Upload Ijazah/Transkrip <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label><input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png"></div>
+                            <div class="form-group">
+                                <label>Upload Ijazah/Transkrip <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
+                                <input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png">
+                                <input type="hidden" name="existing_dok_pendidikan[]" value="">
+                            </div>
                         </div>
-                        <input type="hidden" name="existing_dok_pendidikan[]" value="">
                     </div>
                 <?php endif; ?>
             </div>
@@ -808,10 +847,10 @@ $breadcrumbs = [
                 </div>
             </div>
             
-            <div id="area_serdos" class="multi-row" style="display: <?= $has_serdos ? 'flex' : 'none' ?>; background:#f8fafc; border:1px solid #e2e8f0; padding:15px; border-radius:8px;">
+            <div id="area_serdos" class="multi-row" style="<?= $has_serdos ? 'display:flex;' : 'display:none;' ?> background:#f8fafc; border:1px solid #e2e8f0; padding:15px; border-radius:8px;">
                 <div class="form-group">
                     <label>Nomor Sertifikasi Dosen</label>
-                    <input type="text" name="no_serdos" value="<?= htmlspecialchars($data['no_serdos']) ?>" placeholder="Contoh: 123456789">
+                    <input type="text" name="no_serdos" value="<?= htmlspecialchars($data['no_serdos'] ?? '') ?>" placeholder="Contoh: 123456789">
                 </div>
                 <div class="form-group">
                     <label>Upload Dokumen Sertifikasi (Serdos) <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
@@ -893,12 +932,20 @@ $breadcrumbs = [
                     <label class="radio-label"><input type="radio" name="status_keaktifan" value="Tidak Aktif" onclick="toggleKeaktifan(this)" <?= $sts_aktif == 'Tidak Aktif' ? 'checked' : '' ?>> Tidak Aktif</label>
                 </div>
             </div>
-            <div id="area_keaktifan_pilihan" class="<?= $sts_aktif ? '' : 'hidden' ?>" style="margin-top:15px; background:#f0f6ff; border:1px solid #bfdbfe; padding:15px; border-radius:8px;">
-                <label style="font-weight:600; font-size:0.9rem;">Status Detail</label>
+            <div id="area_keaktifan_date" class="<?= $sts_aktif == 'Tidak Aktif' ? '' : 'hidden' ?>" style="margin-top:15px;">
+                <div class="form-group">
+                    <label>Tanggal Mulai Tidak Bekerja</label>
+                    <input type="date" name="tgl_mulai_tidak_bekerja" value="<?= $data['tgl_mulai_tidak_bekerja'] ?>">
+                </div>
+            </div>
+            <div id="area_keaktifan_pilihan" class="<?= $sts_aktif == 'Tidak Aktif' ? '' : 'hidden' ?>" style="margin-top:15px; background:#fff1f2; border:1px solid #fecaca; padding:15px; border-radius:8px;">
+                <label style="font-weight:600; font-size:0.9rem; color:#e11d48;">Alasan Tidak Aktif</label>
                 <div style="display:flex; gap:20px; margin-top:10px; flex-wrap:wrap;">
                     <label class="radio-label"><input type="radio" name="ket_tidak_aktif" value="Cuti" onclick="toggleKeaktifanLainnya(this)" <?= $ket_aktif == 'Cuti' ? 'checked' : '' ?>> Cuti</label>
                     <label class="radio-label"><input type="radio" name="ket_tidak_aktif" value="Izin Belajar" onclick="toggleKeaktifanLainnya(this)" <?= $ket_aktif == 'Izin Belajar' ? 'checked' : '' ?>> Izin Belajar</label>
                     <label class="radio-label"><input type="radio" name="ket_tidak_aktif" value="Tugas Belajar" onclick="toggleKeaktifanLainnya(this)" <?= $ket_aktif == 'Tugas Belajar' ? 'checked' : '' ?>> Tugas Belajar</label>
+                    <label class="radio-label"><input type="radio" name="ket_tidak_aktif" value="Resign" onclick="toggleKeaktifanLainnya(this)" <?= $ket_aktif == 'Resign' ? 'checked' : '' ?>> Resign</label>
+                    <label class="radio-label"><input type="radio" name="ket_tidak_aktif" value="Pensiun" onclick="toggleKeaktifanLainnya(this)" <?= $ket_aktif == 'Pensiun' ? 'checked' : '' ?>> Pensiun</label>
                     <label class="radio-label"><input type="radio" name="ket_tidak_aktif" value="Lainnya" onclick="toggleKeaktifanLainnya(this)" <?= $isLainnya && $ket_aktif !== '' ? 'checked' : '' ?>> Lainnya</label>
                 </div>
                 <div id="area_tidak_aktif_lainnya" class="<?= $isLainnya && $ket_aktif !== '' ? '' : 'hidden' ?>" style="margin-top:12px;">
@@ -915,56 +962,67 @@ $breadcrumbs = [
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", function() {
-    // Initialize initial state for Jenis Penugasan
-    const initialJenis = document.querySelector('input[name="jenis_dosen"]:checked')?.value || 'Non Struktural';
-    let previousJenis = initialJenis;
-    const jabArea = document.getElementById('area_jabatan_struktural');
-    const grpTmk = document.getElementById('grp_tmk');
-    const grpTmtk = document.getElementById('grp_tmtk');
-    const grpDok = document.getElementById('grp_dok_perubahan');
-    const tmkInput = document.getElementById('tmk_input');
-    const tmtkInput = document.getElementById('tmtk_input');
+const CURRENT_DOSEN_ID = <?= $id ?>;
+let isDuplicate = false;
 
-    if (initialJenis === 'Struktural') {
-        jabArea.classList.remove('hidden');
-        grpTmk?.classList.remove('hidden');
-        grpTmtk?.classList.add('hidden');
-        grpDok?.classList.remove('hidden');
-    } else {
-        jabArea.classList.add('hidden');
-        grpTmk?.classList.add('hidden');
-        grpTmtk?.classList.add('hidden');
-        grpDok?.classList.add('hidden');
+document.addEventListener("DOMContentLoaded", function() {
+    // Duplicate Checking Logic
+    const inpNip = document.getElementById('inp_nip');
+    const inpNidn = document.getElementById('inp_nidn');
+    const inpNuptk = document.getElementById('inp_nuptk');
+
+    async function checkDup(type, value, warnId) {
+        if(!value) {
+            document.getElementById(warnId).style.display = 'none';
+            return false;
+        }
+        let res = await fetch(`check_duplicate.php?type=${type}&value=${encodeURIComponent(value)}&exclude_id=${CURRENT_DOSEN_ID}`);
+        let data = await res.json();
+        if(data.exists) {
+            document.getElementById(warnId).innerHTML = `<i class="fas fa-exclamation-triangle"></i> Terdaftar a.n. ${data.name}`;
+            document.getElementById(warnId).style.display = 'block';
+            return true;
+        } else {
+            document.getElementById(warnId).style.display = 'none';
+            return false;
+        }
     }
+
+    const validateAllDups = async () => {
+        let n1 = await checkDup('nip', inpNip.value, 'warn_nip');
+        let n2 = await checkDup('nidn', inpNidn.value, 'warn_nidn');
+        let n3 = await checkDup('nuptk', inpNuptk.value, 'warn_nuptk');
+        isDuplicate = n1 || n2 || n3;
+    };
+
+    inpNip.addEventListener('blur', validateAllDups);
+    inpNidn.addEventListener('blur', validateAllDups);
+    inpNuptk.addEventListener('blur', validateAllDups);
+
+    document.querySelector('form').addEventListener('submit', function(e) {
+        if(isDuplicate) {
+            e.preventDefault();
+            alert("Gagal menyimpan: NIP / NIDN / NUPTK sudah terdaftar oleh dosen lain! Mohon periksa kembali input Anda.");
+        }
+    });
+    // Jenis Dosen Struktural / Non Struktural logic
+    const jabArea = document.getElementById('area_jabatan_struktural');
+    const grpTmk = document.getElementById('group_tmk');
+    const grpTmtk = document.getElementById('group_tmtk');
 
     document.querySelectorAll('input[name="jenis_dosen"]').forEach(r => {
         r.addEventListener('change', function() {
             const currentVal = this.value;
-            // Clear inputs when switching
-            if (tmkInput) tmkInput.value = '';
-            if (tmtkInput) tmtkInput.value = '';
             
             if (currentVal === 'Struktural') {
                 jabArea.classList.remove('hidden');
                 grpTmk?.classList.remove('hidden');
-                grpTmtk?.classList.add('hidden'); // Only show TMBT (Terhitung Mulai Bertugas)
-                grpDok?.classList.remove('hidden');
-            } else if (currentVal === 'Non Struktural') {
+                grpTmtk?.classList.add('hidden');
+            } else {
                 jabArea.classList.add('hidden');
-                if (previousJenis === 'Struktural') {
-                    // Switching back to non-struktural: show TMTBT
-                    grpTmk?.classList.add('hidden');
-                    grpTmtk?.classList.remove('hidden');
-                    grpDok?.classList.remove('hidden');
-                } else {
-                    // Always non-struktural: hide all
-                    grpTmk?.classList.add('hidden');
-                    grpTmtk?.classList.add('hidden');
-                    grpDok?.classList.add('hidden');
-                }
+                grpTmk?.classList.add('hidden');
+                grpTmtk?.classList.remove('hidden');
             }
-            previousJenis = currentVal;
         });
     });
 });
@@ -973,9 +1031,9 @@ function addJabfung() {
     const html = `<div class="dynamic-item">
         <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
         <div class="form-group">
-            <label>Jabatan Akademik Dosen <span style="color:var(--text-muted); font-weight:400; font-size:0.85rem;">(TMT Jabfung)</span></label>
+            <label>Jabatan Akademik Dosen</label>
             <select name="jabfung_akademik[]">
-                <option value="">- Pilih Jabatan -</option>
+                <option value="">- Pilih Jabatan Akademik -</option>
                 <option value="Asisten Ahli">Asisten Ahli</option>
                 <option value="Lektor">Lektor</option>
                 <option value="Lektor Kepala">Lektor Kepala</option>
@@ -983,7 +1041,15 @@ function addJabfung() {
             </select>
         </div>
         <div class="multi-row" style="margin-top:12px;">
-            <div class="form-group"><label>TMT Jabfung <span style="color:var(--text-muted); font-weight:400;">(Tanggal Mulai Berlaku)</span></label><input type="date" name="tmt_jabfung[]"></div>
+            <div class="form-group">
+                <label>TMT Jabfung <span style="color:var(--text-muted); font-weight:400;">(Tanggal Mulai Berlaku)</span></label>
+                <input type="date" name="tmt_jabfung[]">
+                <small style="color:var(--text-muted); font-size:0.75rem; margin-top:4px; display:block;">Pilih tanggal surat keputusan jabatan fungsional mulai berlaku.</small>
+            </div>
+            <div class="form-group">
+                <label>Keterangan</label>
+                <input type="text" name="ket_jabfung[]" placeholder="Keterangan tambahan (opsional)">
+            </div>
             <div class="form-group">
                 <label>Upload SK Jabfung <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
                 <input type="file" name="dok_jabfung[]" accept=".pdf,.jpg,.png">
@@ -1124,8 +1190,9 @@ function addStatusDosen() {
                 <option value="Homebase">Homebase</option>
             </select>
         </div>
-        <div class="multi-row" style="margin-top:12px;">
-            <div class="form-group"><label>TMT <span style="color:var(--text-muted); font-weight:400;">(Tanggal Mulai Bekerja)</span></label><input type="date" name="tmt_status[]"></div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top:12px;">
+            <div class="form-group"><label>Terhitung Mulai Bekerja</label><input type="date" name="tmt_status[]"></div>
+            <div class="form-group"><label>Tanggal Berhenti <span style="color:var(--text-muted); font-weight:400;">(Jika Ada)</span></label><input type="date" name="tgl_berhenti_status[]"></div>
             <div class="form-group">
                 <label>Upload Dokumen</label>
                 <input type="file" name="dok_status[]" accept=".pdf,.jpg,.png">
@@ -1137,11 +1204,14 @@ function addStatusDosen() {
 }
 
 function toggleKeaktifan(el) {
-    const area = document.getElementById('area_keaktifan_pilihan');
-    if(el.value === 'Tidak Aktif' || el.value === 'Aktif') {
-        area.classList.remove('hidden');
+    const areaDate = document.getElementById('area_keaktifan_date');
+    const areaPilihan = document.getElementById('area_keaktifan_pilihan');
+    if(el.value === 'Tidak Aktif') {
+        areaDate.classList.remove('hidden');
+        areaPilihan.classList.remove('hidden');
     } else {
-        area.classList.add('hidden');
+        areaDate.classList.add('hidden');
+        areaPilihan.classList.add('hidden');
     }
 }
 function toggleKeaktifanLainnya(el) {

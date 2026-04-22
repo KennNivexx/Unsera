@@ -23,22 +23,61 @@ if (!$pegawai) {
     exit;
 }
 
-// Fetch golongan yayasan pegawai
-$yayasans = $conn->query("SELECT * FROM yayasan_pegawai WHERE pegawai_id = $id")->fetch_all(MYSQLI_ASSOC);
-// Fetch riwayat pendidikan pegawai
-$pendidikans = $conn->query("SELECT * FROM pendidikan_pegawai WHERE pegawai_id = $id")->fetch_all(MYSQLI_ASSOC);
+// Support older records single 'ttl' field vs split
+$ttl_tempat_val = $pegawai['ttl_tempat'];
+$ttl_tanggal_val = $pegawai['ttl_tanggal'];
+if (!$ttl_tempat_val && !$ttl_tanggal_val && !empty($pegawai['ttl'])) {
+    $parts = explode(',', $pegawai['ttl'], 2);
+    if(count($parts) == 2) {
+        $ttl_tempat_val = trim($parts[0]);
+        $ttl_tanggal_val = date('Y-m-d', strtotime(trim($parts[1])));
+    } else {
+        $ttl_tempat_val = trim($pegawai['ttl']);
+    }
+}
+
+// Fetch riwayat
+$yayasans = $conn->query("SELECT * FROM yayasan_pegawai WHERE pegawai_id = $id ORDER BY tmt ASC")->fetch_all(MYSQLI_ASSOC);
+$pendidikans = $conn->query("SELECT * FROM pendidikan_pegawai WHERE pegawai_id = $id ORDER BY tahun_lulus ASC")->fetch_all(MYSQLI_ASSOC);
+$status_riwayats = $conn->query("SELECT * FROM status_pegawai_riwayat WHERE pegawai_id = $id")->fetch_all(MYSQLI_ASSOC);
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update'])) {
     $nama = $_POST['nama_lengkap'];
     $alamat = $_POST['alamat'];
-    $ttl = $_POST['ttl'];
-    $jenis = $_POST['jenis_pegawai'];
+    $ttl_tempat = $_POST['ttl_tempat'] ?? '';
+    $ttl_tanggal = $_POST['ttl_tanggal'] ?: null;
+    $ttl_lama = ($ttl_tempat ? $ttl_tempat . ', ' : '') . ($ttl_tanggal ? date('d F Y', strtotime($ttl_tanggal)) : '');
+    $status_peg = $_POST['status_pegawai'][0] ?? ''; // Latest primary status
     $status_pribadi = $_POST['status_pribadi'] ?? '';
     $jabatan = $_POST['posisi_jabatan'];
     $tmk = $_POST['tmt_mulai_kerja'] ?: null;
     $tmtk = $_POST['tmt_tidak_kerja'] ?: null;
     $unit = $_POST['unit_kerja'];
     $ket_tmtk = $_POST['ket_tmtk'] ?? '';
+
+    // Record previously valid statuses for change detection
+    $old_status_peg = $pegawai['status_pegawai'] ?? $pegawai['jenis_pegawai'];
+    $old_jabatan = $pegawai['posisi_jabatan'];
+    $old_unit = $pegawai['unit_kerja'];
+    
+    // Status Kepegawaian Riwayat Logic - Archive old values if primary status data changed
+    if ($old_status_peg != $status_peg || $old_jabatan != $jabatan || $old_unit != $unit || $pegawai['tmt_mulai_kerja'] != $tmk) {
+        if (!empty($old_status_peg)) {
+            $arch_stmt = $conn->prepare("INSERT INTO status_pegawai_riwayat (pegawai_id, status_pegawai, posisi_jabatan, unit_kerja, tmt_mulai_kerja, tmt_tidak_kerja, dokumen) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $end_date = date('Y-m-d');
+            $arch_stmt->bind_param("issssss", 
+                $id, 
+                $old_status_peg, 
+                $old_jabatan, 
+                $old_unit, 
+                $pegawai['tmt_mulai_kerja'], 
+                $end_date, 
+                $pegawai['dok_status_pegawai']
+            );
+            $arch_stmt->execute();
+            $arch_stmt->close();
+        }
+    }
 
     $pendidikan_list = [];
     if (!empty($_POST['pend_jenjang'])) {
@@ -60,11 +99,39 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update'])) {
 
     $pendidikan = $pendidikan_list[0]['jenjang'] ?? ($_POST['riwayat_pendidikan'] ?? '');
 
+    // Handle KTP Document
+    $dok_ktp = $pegawai['dok_ktp'];
+    if (!empty($_FILES['dok_ktp']['name']) && $_FILES['dok_ktp']['error'] == 0) {
+        $ext = pathinfo($_FILES['dok_ktp']['name'], PATHINFO_EXTENSION);
+        $dok_ktp = "uploads/ktp_p_" . time() . "." . $ext;
+        move_uploaded_file($_FILES['dok_ktp']['tmp_name'], $dok_ktp);
+        if ($pegawai['dok_ktp'] && file_exists($pegawai['dok_ktp'])) @unlink($pegawai['dok_ktp']);
+    }
+
+    // Handle KK Document
+    $dok_kk = $pegawai['dok_kk'];
+    if (!empty($_FILES['dok_kk']['name']) && $_FILES['dok_kk']['error'] == 0) {
+        $ext = pathinfo($_FILES['dok_kk']['name'], PATHINFO_EXTENSION);
+        $dok_kk = "uploads/kk_p_" . time() . "." . $ext;
+        move_uploaded_file($_FILES['dok_kk']['tmp_name'], $dok_kk);
+        if ($pegawai['dok_kk'] && file_exists($pegawai['dok_kk'])) @unlink($pegawai['dok_kk']);
+    }
+
+    // Handle Status Pegawai Document
+    $dok_status_pegawai = $pegawai['dok_status_pegawai'];
+    if (!empty($_FILES['dok_status_pegawai']['name']) && $_FILES['dok_status_pegawai']['error'] == 0) {
+        $ext = pathinfo($_FILES['dok_status_pegawai']['name'], PATHINFO_EXTENSION);
+        $dok_status_pegawai = "uploads/dok_sp_" . time() . "." . $ext;
+        move_uploaded_file($_FILES['dok_status_pegawai']['tmp_name'], $dok_status_pegawai);
+        // Note: we don't unlink old status document here if we archive it, but for simplicity let's leave it as is.
+    }
+
     // Handle TMTK Document
     $dok_tmtk = $pegawai['dok_tmtk'];
     if (isset($_FILES['dok_tmtk']) && $_FILES['dok_tmtk']['error'] == 0) {
         $ext = pathinfo($_FILES['dok_tmtk']['name'], PATHINFO_EXTENSION);
-        $dok_tmtk = "tmtk_" . time() . "." . $ext;
+        $dok_tmtk = "tmtk_p_" . time() . "." . $ext;
+        if (!is_dir('dokumen')) mkdir('dokumen', 0777, true);
         move_uploaded_file($_FILES['dok_tmtk']['tmp_name'], "dokumen/" . $dok_tmtk);
         if ($pegawai['dok_tmtk'] && file_exists("dokumen/" . $pegawai['dok_tmtk'])) @unlink("dokumen/" . $pegawai['dok_tmtk']);
     }
@@ -79,15 +146,82 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update'])) {
     }
 
     $sql = "UPDATE pegawai SET 
-            nama_lengkap=?, alamat=?, ttl=?, jenis_pegawai=?, status_pribadi=?, 
+            nama_lengkap=?, alamat=?, ttl=?, ttl_tempat=?, ttl_tanggal=?, status_pegawai=?, status_pribadi=?, 
             posisi_jabatan=?, tmt_mulai_kerja=?, tmt_tidak_kerja=?, unit_kerja=?, 
-            riwayat_pendidikan=?, ket_tidak_kerja=?, dok_tmtk=?, foto_profil=?
+            riwayat_pendidikan=?, ket_tidak_kerja=?, dok_tmtk=?, dok_ktp=?, dok_kk=?, dok_status_pegawai=?, foto_profil=?
             WHERE id=?";
     
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sssssssssssssi", $nama, $alamat, $ttl, $jenis, $status_pribadi, $jabatan, $tmk, $tmtk, $unit, $pendidikan, $ket_tmtk, $dok_tmtk, $foto_profil, $id);
+    $stmt->bind_param("sssssssssssssssssssi", 
+        $nama, $alamat, $ttl_lama, $ttl_tempat, $ttl_tanggal, $status_peg, $status_pribadi, 
+        $jabatan, $tmk, $tmtk, $unit, $pendidikan, $ket_tmtk, $dok_tmtk, $dok_ktp, $dok_kk, $dok_status_pegawai, $foto_profil, $id);
     $stmt->execute();
     $stmt->close();
+
+    // --- RIWAYAT STATUS PEGAWAI MANAGEMENT ---
+    // Handle deletes
+    if (!empty($_POST['delete_riwayat_status'])) {
+        foreach ($_POST['delete_riwayat_status'] as $rs_id) {
+            $rs_id = (int)$rs_id;
+            $res = $conn->query("SELECT dokumen FROM status_pegawai_riwayat WHERE id = $rs_id");
+            if ($f = $res->fetch_assoc()) {
+                if ($f['dokumen'] && file_exists($f['dokumen'])) @unlink($f['dokumen']);
+            }
+            $conn->query("DELETE FROM status_pegawai_riwayat WHERE id = $rs_id");
+        }
+    }
+    // Handle existing updates
+    if (!empty($_POST['riwayat_id'])) {
+        foreach ($_POST['riwayat_id'] as $rs_id) {
+            $rs_id = (int)$rs_id;
+            $r_status = $_POST['riwayat_status_pegawai'][$rs_id] ?? '';
+            $r_jabatan = $_POST['riwayat_posisi_jabatan'][$rs_id] ?? '';
+            $r_unit = $_POST['riwayat_unit_kerja'][$rs_id] ?? '';
+            $r_tmt = $_POST['riwayat_tmt_mulai'][$rs_id] ?: null;
+            $r_tmtbt = $_POST['riwayat_tmt_tidak'][$rs_id] ?: null;
+            $r_file_name = $_POST['existing_riwayat_file'][$rs_id] ?? '';
+
+            if (isset($_FILES['riwayat_file']['name'][$rs_id]) && $_FILES['riwayat_file']['error'][$rs_id] == 0) {
+                if (!is_dir('uploads')) mkdir('uploads', 0777, true);
+                $ext = pathinfo($_FILES['riwayat_file']['name'][$rs_id], PATHINFO_EXTENSION);
+                $new_file = "uploads/riwayat_sp_" . time() . "_" . $rs_id . "." . $ext;
+                if (move_uploaded_file($_FILES['riwayat_file']['tmp_name'][$rs_id], $new_file)) {
+                    if ($r_file_name && file_exists($r_file_name)) @unlink($r_file_name);
+                    $r_file_name = $new_file;
+                }
+            }
+
+            $stmt_rs = $conn->prepare("UPDATE status_pegawai_riwayat SET status_pegawai=?, posisi_jabatan=?, unit_kerja=?, tmt_mulai_kerja=?, tmt_tidak_kerja=?, dokumen=? WHERE id=?");
+            $stmt_rs->bind_param("ssssssi", $r_status, $r_jabatan, $r_unit, $r_tmt, $r_tmtbt, $r_file_name, $rs_id);
+            $stmt_rs->execute();
+            $stmt_rs->close();
+        }
+    }
+    // Handle new inserts
+    if (!empty($_POST['new_riwayat_status_pegawai'])) {
+        foreach ($_POST['new_riwayat_status_pegawai'] as $key => $n_status) {
+            if (trim($n_status) !== '') {
+                $n_jabatan = $_POST['new_riwayat_posisi_jabatan'][$key] ?? '';
+                $n_unit = $_POST['new_riwayat_unit_kerja'][$key] ?? '';
+                $n_tmt = $_POST['new_riwayat_tmt_mulai'][$key] ?: null;
+                $n_tmtbt = $_POST['new_riwayat_tmt_tidak'][$key] ?: null;
+                
+                $n_file_name = '';
+                if (isset($_FILES['new_riwayat_file']['name'][$key]) && $_FILES['new_riwayat_file']['error'][$key] == 0) {
+                    if (!is_dir('uploads')) mkdir('uploads', 0777, true);
+                    $ext = pathinfo($_FILES['new_riwayat_file']['name'][$key], PATHINFO_EXTENSION);
+                    $n_file_name = "uploads/riwayat_sp_" . time() . "n_" . $key . "." . $ext;
+                    move_uploaded_file($_FILES['new_riwayat_file']['tmp_name'][$key], $n_file_name);
+                }
+
+                $stmt_nrs = $conn->prepare("INSERT INTO status_pegawai_riwayat (pegawai_id, status_pegawai, posisi_jabatan, unit_kerja, tmt_mulai_kerja, tmt_tidak_kerja, dokumen) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt_nrs->bind_param("issssss", $id, $n_status, $n_jabatan, $n_unit, $n_tmt, $n_tmtbt, $n_file_name);
+                $stmt_nrs->execute();
+                $stmt_nrs->close();
+            }
+        }
+    }
+
 
     // --- YAYASAN PEGAWAI MANAGEMENT ---
     $yayasan_list = [];
@@ -214,9 +348,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update'])) {
 // Fetch Rewards & Punishments for Form
 $rewards = $conn->query("SELECT * FROM reward_pegawai WHERE pegawai_id = $id");
 $punishments = $conn->query("SELECT * FROM punishment_pegawai WHERE pegawai_id = $id");
-// Re-fetch yayasans (in case page is just showing the form)
-$yayasans = $conn->query("SELECT * FROM yayasan_pegawai WHERE pegawai_id = $id")->fetch_all(MYSQLI_ASSOC);
-$pendidikans = $conn->query("SELECT * FROM pendidikan_pegawai WHERE pegawai_id = $id")->fetch_all(MYSQLI_ASSOC);
 
 $breadcrumbs = [
     ['label' => 'Daftar Pegawai', 'url' => 'data_pegawai.php'],
@@ -254,25 +385,12 @@ $breadcrumbs = [
             border: 1px solid #e2e8f0;
             position: relative;
         }
+        .file-preview {
+            margin-top: 8px; font-size: 0.8rem;
+            display: flex; align-items: center; gap: 8px;
+        }
         .hidden { display: none !important; }
-        .delete-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255, 255, 255, 0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10;
-            font-weight: 700;
-            color: var(--danger);
-            border-radius: var(--radius-md);
-        }
-        .file-current {
-            display: inline-block;
-            margin-top: 6px;
-            font-size: 0.78rem;
-            color: var(--accent);
-        }
+        .delete-btn { display: inline-flex; align-items: center; gap: 5px; color: var(--danger); font-size: 0.85rem; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -284,8 +402,8 @@ $breadcrumbs = [
 
     <div class="header-section" style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 15px;">
         <div>
-            <h1>Edit Profil Staf</h1>
-            <p>Perbarui informasi data personal dan kepegawaian staf Universitas Serang Raya.</p>
+            <h1>Edit Data Pegawai</h1>
+            <p>Perbarui informasi profil dan kepegawaian staf kependidikan.</p>
         </div>
         <div>
             <a href="detail_pegawai.php?id=<?= $id ?>" class="btn btn-outline">
@@ -299,15 +417,20 @@ $breadcrumbs = [
         <!-- Foto Profil -->
         <div class="form-section">
             <h3><i class="fas fa-camera"></i> Foto Profil</h3>
-            <div class="form-group">
-                <label>Upload Foto Profil (JPG/PNG)</label>
-                <input type="file" name="foto_profil" accept=".jpg,.jpeg,.png">
-                <?php if(!empty($pegawai['foto_profil'])): ?>
-                    <div style="margin-top:12px;">
-                        <img src="<?= htmlspecialchars($pegawai['foto_profil']) ?>" alt="Foto Profil" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid var(--primary-light);">
-                        <span class="file-current" style="display:inline-block;margin-left:10px;">Foto saat ini: <?= basename($pegawai['foto_profil']) ?></span>
+            <div style="display: flex; gap: 20px; align-items: center;">
+                <?php if(!empty($pegawai['foto_profil']) && file_exists($pegawai['foto_profil'])): ?>
+                    <div style="width: 80px; height: 80px; border-radius: 50%; overflow: hidden; border: 3px solid #e2e8f0; flex-shrink: 0;">
+                        <img src="<?= htmlspecialchars($pegawai['foto_profil']) ?>" alt="Foto" style="width:100%; height:100%; object-fit:cover;">
+                    </div>
+                <?php else: ?>
+                    <div style="width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #e2e8f0; font-size: 2rem; font-weight: bold; flex-shrink: 0; color: #94a3b8;">
+                        <?= strtoupper(substr($pegawai['nama_lengkap'], 0, 1)) ?>
                     </div>
                 <?php endif; ?>
+                <div class="form-group" style="flex: 1;">
+                    <label>Ubah Foto Profil (Hanya isi jika ingin mengganti)</label>
+                    <input type="file" name="foto_profil" accept=".jpg,.jpeg,.png">
+                </div>
             </div>
         </div>
 
@@ -320,75 +443,115 @@ $breadcrumbs = [
             </div>
             
             <div class="form-group">
-                <label>Alamat Domisili</label>
+                <label>Alamat Lengkap</label>
                 <textarea name="alamat" rows="2" required><?= htmlspecialchars($pegawai['alamat']) ?></textarea>
             </div>
 
             <div class="multi-row">
                 <div class="form-group">
-                    <label>Tempat & Tanggal Lahir (TTL)</label>
-                    <input type="text" name="ttl" value="<?= htmlspecialchars($pegawai['ttl']) ?>" required>
+                    <label>Tempat Lahir</label>
+                    <input type="text" name="ttl_tempat" value="<?= htmlspecialchars($ttl_tempat_val) ?>" required>
                 </div>
                 <div class="form-group">
-                    <label>Status Pernikahan</label>
-                    <select name="status_pribadi" required>
-                        <option value="Menikah" <?= $pegawai['status_pribadi'] == 'Menikah' ? 'selected' : '' ?>>Menikah</option>
-                        <option value="Belum Menikah" <?= $pegawai['status_pribadi'] == 'Belum Menikah' ? 'selected' : '' ?>>Belum Menikah</option>
-                        <option value="Bercerai" <?= $pegawai['status_pribadi'] == 'Bercerai' ? 'selected' : '' ?>>Bercerai</option>
-                    </select>
+                    <label>Tanggal Lahir</label>
+                    <input type="date" name="ttl_tanggal" value="<?= $ttl_tanggal_val ?>" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Status Pernikahan</label>
+                <select name="status_pribadi" required>
+                    <option value="">Pilih Status</option>
+                    <option value="Menikah" <?= ($pegawai['status_pribadi'] ?? '') == 'Menikah' ? 'selected' : '' ?>>Menikah</option>
+                    <option value="Belum Menikah" <?= ($pegawai['status_pribadi'] ?? '') == 'Belum Menikah' ? 'selected' : '' ?>>Belum Menikah</option>
+                    <option value="Bercerai" <?= ($pegawai['status_pribadi'] ?? '') == 'Bercerai' ? 'selected' : '' ?>>Bercerai</option>
+                </select>
+            </div>
+
+            <div class="multi-row">
+                <div class="form-group">
+                    <label>Dokumen KTP</label>
+                    <input type="file" name="dok_ktp" accept=".pdf,.jpg,.jpeg,.png">
+                    <?php if(!empty($pegawai['dok_ktp'])): ?>
+                        <div class="file-preview"><i class="fas fa-check-circle" style="color:var(--success)"></i> KTP telah diunggah</div>
+                    <?php endif; ?>
+                </div>
+                <div class="form-group">
+                    <label>Dokumen KK</label>
+                    <input type="file" name="dok_kk" accept=".pdf,.jpg,.jpeg,.png">
+                    <?php if(!empty($pegawai['dok_kk'])): ?>
+                        <div class="file-preview"><i class="fas fa-check-circle" style="color:var(--success)"></i> KK telah diunggah</div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
 
-        <!-- Kepegawaian -->
+        <!-- Status Kepegawaian -->
         <div class="form-section">
             <h3><i class="fas fa-briefcase"></i> Status Kepegawaian</h3>
             
-            <div class="multi-row">
-                <div class="form-group">
-                    <label>Jenis Pegawai</label>
-                    <div style="display: flex; gap: 25px; margin-top: 10px;">
-                        <label class="radio-label"><input type="radio" name="jenis_pegawai" value="tetap" <?= $pegawai['jenis_pegawai'] == 'tetap' ? 'checked' : '' ?> required> Tetap</label>
-                        <label class="radio-label"><input type="radio" name="jenis_pegawai" value="tdk tetap" <?= $pegawai['jenis_pegawai'] == 'tdk tetap' ? 'checked' : '' ?>> Tidak Tetap</label>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Posisi Jabatan / Role</label>
-                    <input type="text" name="posisi_jabatan" value="<?= htmlspecialchars($pegawai['posisi_jabatan']) ?>" required>
-                </div>
-            </div>
-
-            <div class="multi-row">
-                <div class="form-group">
-                    <label>Terhitung Mulai Kerja (TMK)</label>
-                    <input type="date" name="tmt_mulai_kerja" value="<?= $pegawai['tmt_mulai_kerja'] ?>" required>
-                </div>
-                <div class="form-group">
-                    <label>TMT Tidak Kerja (Opsional)</label>
-                    <input type="date" name="tmt_tidak_kerja" id="tmtk_input" value="<?= $pegawai['tmt_tidak_kerja'] ?>">
-                </div>
-            </div>
-
-            <div id="area_tmtk" class="<?= $pegawai['tmt_tidak_kerja'] ? '' : 'hidden' ?> dynamic-item">
-                <div class="multi-row">
-                    <div class="form-group">
-                        <label>Alasan Berhenti</label>
-                        <select name="ket_tmtk">
-                            <option value="">Pilih Alasan</option>
-                            <option value="Resign" <?= $pegawai['ket_tidak_kerja'] == 'Resign' ? 'selected' : '' ?>>Resign</option>
-                            <option value="Pensiun" <?= $pegawai['ket_tidak_kerja'] == 'Pensiun' ? 'selected' : '' ?>>Pensiun</option>
-                            <option value="Putus Kontrak" <?= $pegawai['ket_tidak_kerja'] == 'Putus Kontrak' ? 'selected' : '' ?>>Putus Kontrak</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Dokumen SK Pemberhentian</label>
-                        <input type="file" name="dok_tmtk" accept=".pdf,.png,.jpg,.jpeg">
-                        <?php if(!empty($pegawai['dok_tmtk'])): ?>
-                            <div style="margin-top: 8px; font-size: 0.8rem; color: var(--accent);">
-                                <i class="fas fa-file-pdf"></i> Dokumen saat ini: <?= $pegawai['dok_tmtk'] ?>
+            <div id="status-pegawai-wrapper">
+                <?php if (count($status_riwayats) > 0): ?>
+                    <?php foreach($status_riwayats as $idx => $sr): ?>
+                        <div class="dynamic-item">
+                            <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
+                            <div class="multi-row">
+                                <div class="form-group">
+                                    <label>Status Pegawai</label>
+                                    <select name="status_pegawai[]" required>
+                                        <option value="Tetap" <?= $sr['status_pegawai']=='Tetap'?'selected':'' ?>>Tetap</option>
+                                        <option value="Tidak Tetap" <?= $sr['status_pegawai']=='Tidak Tetap'?'selected':'' ?>>Tidak Tetap</option>
+                                        <option value="Honorer" <?= $sr['status_pegawai']=='Honorer'?'selected':'' ?>>Honorer</option>
+                                        <option value="Kontrak" <?= $sr['status_pegawai']=='Kontrak'?'selected':'' ?>>Kontrak</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>TMT Status</label>
+                                    <input type="date" name="tmt_status_pegawai[]" value="<?= $sr['tmt'] ?? $sr['tmt_mulai_kerja'] ?>">
+                                </div>
                             </div>
-                        <?php endif; ?>
+                            <div class="form-group" style="margin-top:10px;">
+                                <label>Upload Dokumen <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
+                                <input type="file" name="dok_status_peg_riwayat[]" accept=".pdf,.jpg,.jpeg,.png">
+                                <?php if(!empty($sr['dokumen'])): ?>
+                                    <a href="<?= $sr['dokumen'] ?>" target="_blank" class="file-preview"><i class="fas fa-file-pdf"></i> <?= basename($sr['dokumen']) ?></a>
+                                    <input type="hidden" name="existing_dok_status_peg[]" value="<?= $sr['dokumen'] ?>">
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="dynamic-item">
+                        <div class="multi-row">
+                            <div class="form-group">
+                                <label>Status Pegawai</label>
+                                <select name="status_pegawai[]" required>
+                                    <option value="">- Pilih Status -</option>
+                                    <option value="Tetap" <?= ($pegawai['status_pegawai']??'') == 'Tetap' ? 'selected' : '' ?>>Tetap</option>
+                                    <option value="Tidak Tetap" <?= ($pegawai['status_pegawai']??'') == 'Tidak Tetap' ? 'selected' : '' ?>>Tidak Tetap</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>TMT Status</label>
+                                <input type="date" name="tmt_status_pegawai[]" value="<?= $pegawai['tmt_mulai_kerja'] ?>">
+                            </div>
+                        </div>
                     </div>
+                <?php endif; ?>
+            </div>
+            <button type="button" onclick="addStatusPegawai()" class="btn btn-outline" style="width:100%; margin-bottom:20px;"><i class="fas fa-plus"></i> Tambah Riwayat Status Pegawai</button>
+
+            <div class="multi-row">
+                <div class="form-group">
+                    <label>Upload Dokumen Status Pegawai</label>
+                    <input type="file" name="dok_status_pegawai" accept=".pdf,.jpg,.jpeg,.png">
+                    <?php if(!empty($pegawai['dok_status_pegawai'])): ?>
+                        <div class="file-preview"><i class="fas fa-check-circle" style="color:var(--success)"></i> Dokumen telah diunggah</div>
+                    <?php endif; ?>
+                </div>
+                <div class="form-group">
+                    <label>Jabatan</label>
+                    <input type="text" name="posisi_jabatan" value="<?= htmlspecialchars($pegawai['posisi_jabatan']) ?>" required>
                 </div>
             </div>
 
@@ -397,319 +560,352 @@ $breadcrumbs = [
                     <label>Unit Kerja</label>
                     <input type="text" name="unit_kerja" value="<?= htmlspecialchars($pegawai['unit_kerja']) ?>" required>
                 </div>
+                <div class="form-group">
+                    <label>Terhitung Mulai Bekerja</label>
+                    <input type="date" name="tmt_mulai_kerja" value="<?= $pegawai['tmt_mulai_kerja'] ?>" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Terhitung Mulai Tidak Bekerja</label>
+                <input type="date" name="tmt_tidak_kerja" id="tmtk_input" value="<?= $pegawai['tmt_tidak_kerja'] ?>">
+            </div>
+
+            <div id="area_tmtk" class="<?= empty($pegawai['tmt_tidak_kerja']) ? 'hidden' : '' ?> dynamic-item">
+                <div class="multi-row">
+                    <div class="form-group">
+                        <label>Alasan Berhenti</label>
+                        <select name="ket_tmtk">
+                            <option value="">Pilih Alasan</option>
+                            <?php $ket = $pegawai['ket_tidak_kerja'] ?? ''; ?>
+                            <option value="Resign" <?= $ket=='Resign'?'selected':'' ?>>Resign</option>
+                            <option value="Pensiun" <?= $ket=='Pensiun'?'selected':'' ?>>Pensiun</option>
+                            <option value="Putus Kontrak" <?= $ket=='Putus Kontrak'?'selected':'' ?>>Putus Kontrak</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Dokumen SK Pemberhentian</label>
+                        <input type="file" name="dok_tmtk" accept=".pdf,.png,.jpg,.jpeg">
+                        <?php if(!empty($pegawai['dok_tmtk'])): ?>
+                            <div class="file-preview"><i class="fas fa-check-circle" style="color:var(--success)"></i> SK Pemberhentian diunggah</div>
+                        <?php endif; ?>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- SECTION: Riwayat Pendidikan -->
+        <!-- Riwayat Status Kepegawaian (Historical) -->
+        <div class="form-section" style="margin-top:20px;">
+            <h3><i class="fas fa-history"></i> Riwayat Status Kepegawaian</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom:  १५px;">Kelola riwayat perubahan jenis staf, unit kerja, atau pindah bagian.</p>
+            
+            <div id="riwayat-status-wrapper">
+                <?php foreach($status_riwayats as $idx => $sr): ?>
+                <div class="dynamic-item">
+                    <label class="delete-btn" style="position:absolute; right:15px; top:15px;">
+                        <input type="checkbox" name="delete_riwayat_status[]" value="<?= $sr['id'] ?>"> Hapus
+                    </label>
+                    <input type="hidden" name="riwayat_id[<?= $sr['id'] ?>]" value="<?= $sr['id'] ?>">
+                    
+                    <div class="multi-row">
+                        <div class="form-group">
+                            <label>Status Pegawai</label>
+                            <select name="riwayat_status_pegawai[<?= $sr['id'] ?>]" required>
+                                <option value="Tetap" <?= $sr['status_pegawai']=='Tetap'?'selected':'' ?>>Tetap</option>
+                                <option value="Tidak Tetap" <?= $sr['status_pegawai']=='Tidak Tetap'?'selected':'' ?>>Tidak Tetap</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Unit Kerja</label>
+                            <input type="text" name="riwayat_unit_kerja[<?= $sr['id'] ?>]" value="<?= htmlspecialchars($sr['unit_kerja']??'') ?>">
+                        </div>
+                    </div>
+                    <div class="multi-row" style="margin-top:12px;">
+                        <div class="form-group">
+                            <label>Jabatan</label>
+                            <input type="text" name="riwayat_posisi_jabatan[<?= $sr['id'] ?>]" value="<?= htmlspecialchars($sr['posisi_jabatan']??'') ?>">
+                        </div>
+                        <div class="form-group">
+                            <label>TMT Berlaku</label>
+                            <input type="date" name="riwayat_tmt_mulai[<?= $sr['id'] ?>]" value="<?= $sr['tmt_mulai_kerja'] ?>">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top:12px;">
+                        <label>Dokumen Perubahan/SK Riwayat</label>
+                        <input type="hidden" name="existing_riwayat_file[<?= $sr['id'] ?>]" value="<?= htmlspecialchars($sr['dokumen']??'') ?>">
+                        <input type="file" name="riwayat_file[<?= $sr['id'] ?>]" accept=".pdf,.png,.jpg,.jpeg">
+                        <?php if(!empty($sr['dokumen'])): ?>
+                            <div class="file-preview"><i class="fas fa-check-circle" style="color:var(--success)"></i> Ada dokumen tersimpan</div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <button type="button" onclick="addRiwayatStatus()" class="btn btn-outline" style="width:100%;"><i class="fas fa-plus"></i> Tambah Riwayat Secara Manual</button>
+        </div>
+
+
+        <!-- Pendidikan -->
         <div class="form-section">
             <h3><i class="fas fa-graduation-cap"></i> Riwayat Pendidikan</h3>
             <div id="pendidikan-wrapper">
-                <?php if (count($pendidikans) > 0): ?>
-                    <?php foreach($pendidikans as $pend): ?>
-                        <div class="dynamic-item">
-                            <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
-                            <div class="multi-row">
-                                <div class="form-group">
-                                    <label>Jenjang / Tingkat</label>
-                                    <select name="pend_jenjang[]" required>
-                                        <option value="">- Pilih -</option>
-                                        <?php foreach(['SD', 'SMP', 'SMA/SMK', 'D3', 'S1', 'S2', 'S3'] as $p): ?>
-                                        <option value="<?= $p ?>" <?= $pend['jenjang'] == $p ? 'selected' : '' ?>><?= $p ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>Nama Institusi / Universitas</label>
-                                    <input type="text" name="pend_institusi[]" value="<?= htmlspecialchars($pend['institusi']) ?>" placeholder="Contoh: Universitas Indonesia" required>
-                                </div>
-                            </div>
-                            <div class="multi-row" style="margin-top:12px;">
-                                <div class="form-group">
-                                    <label>Tahun Lulus</label>
-                                    <input type="number" name="pend_tahun[]" value="<?= htmlspecialchars($pend['tahun_lulus']) ?>" min="1950" max="2100" placeholder="YYYY" required>
-                                </div>
-                                <div class="form-group">
-                                    <label>Upload Ijazah <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
-                                    <input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png">
-                                    <?php if($pend['dokumen']): ?>
-                                        <a href="<?= $pend['dokumen'] ?>" target="_blank" class="file-current"><i class="fas fa-file-pdf"></i> <?= basename($pend['dokumen']) ?></a>
-                                        <input type="hidden" name="existing_dok_pendidikan[]" value="<?= $pend['dokumen'] ?>">
-                                    <?php else: ?>
-                                        <input type="hidden" name="existing_dok_pendidikan[]" value="">
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
+                <?php if(empty($pendidikans)): ?>
                     <div class="dynamic-item">
                         <div class="multi-row">
                             <div class="form-group">
                                 <label>Jenjang / Tingkat</label>
-                                <select name="pend_jenjang[]" required>
+                                <select name="pend_jenjang[]">
                                     <option value="">- Pilih -</option>
-                                    <?php foreach(['SD', 'SMP', 'SMA/SMK', 'D3', 'S1', 'S2', 'S3'] as $p): ?>
-                                    <option value="<?= $p ?>" <?= $pegawai['riwayat_pendidikan'] == $p ? 'selected' : '' ?>><?= $p ?></option>
+                                    <?php 
+                                    $riw_text = $pegawai['riwayat_pendidikan'] ?? '';
+                                    foreach(['SD', 'SMP', 'SMA/SMK', 'D3', 'D4', 'S1', 'S2', 'S3'] as $p): ?>
+                                    <option value="<?= $p ?>" <?= strpos($riw_text, $p)!==false?'selected':'' ?>><?= $p ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label>Nama Institusi / Universitas</label>
-                                <input type="text" name="pend_institusi[]" placeholder="Contoh: Universitas Indonesia" required>
-                            </div>
+                            <div class="form-group"><label>Nama Institusi / Universitas</label><input type="text" name="pend_institusi[]" value="<?= htmlspecialchars($riw_text) ?>"></div>
                         </div>
                         <div class="multi-row" style="margin-top:12px;">
-                            <div class="form-group"><label>Tahun Lulus</label><input type="number" name="pend_tahun[]" min="1950" max="2100" placeholder="YYYY" required></div>
-                            <div class="form-group"><label>Upload Ijazah <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label><input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png"></div>
+                            <div class="form-group"><label>Tahun Lulus</label><input type="number" name="pend_tahun[]" placeholder="YYYY"></div>
+                            <div class="form-group"><label>Upload Ijazah</label><input type="file" name="dok_pendidikan[]"></div>
                         </div>
-                        <input type="hidden" name="existing_dok_pendidikan[]" value="">
                     </div>
-                <?php endif; ?>
-            </div>
-            <button type="button" onclick="addPendidikan()" class="btn btn-outline" style="width:100%;"><i class="fas fa-plus"></i> Tambah Riwayat Pendidikan</button>
-        </div>
-
-        <!-- SECTION: Pangkat/Golongan Yayasan -->
-        <div class="form-section">
-            <h3><i class="fas fa-layer-group"></i> Pangkat/Golongan Yayasan</h3>
-            <div id="yayasan-wrapper">
-                <?php if (count($yayasans) > 0): ?>
-                    <?php foreach($yayasans as $y): ?>
-                        <div class="dynamic-item">
-                            <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
+                <?php else: ?>
+                    <?php foreach($pendidikans as $idx => $pend): ?>
+                    <div class="dynamic-item">
+                        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
+                        <div class="multi-row">
                             <div class="form-group">
-                                <label>Golongan Yayasan</label>
-                                <select name="gol_yayasan[]">
-                                    <option value="">- Pilih Golongan -</option>
-                                    <option value="III/a" <?= $y['golongan']=='III/a'?'selected':'' ?>>III/a</option>
-                                    <option value="III/b" <?= $y['golongan']=='III/b'?'selected':'' ?>>III/b</option>
-                                    <option value="III/c" <?= $y['golongan']=='III/c'?'selected':'' ?>>III/c</option>
-                                    <option value="III/d" <?= $y['golongan']=='III/d'?'selected':'' ?>>III/d</option>
-                                    <option value="IV/a" <?= $y['golongan']=='IV/a'?'selected':'' ?>>IV/a</option>
-                                    <option value="IV/b" <?= $y['golongan']=='IV/b'?'selected':'' ?>>IV/b</option>
-                                    <option value="IV/c" <?= $y['golongan']=='IV/c'?'selected':'' ?>>IV/c</option>
-                                    <option value="IV/d" <?= $y['golongan']=='IV/d'?'selected':'' ?>>IV/d</option>
+                                <label>Jenjang</label>
+                                <select name="pend_jenjang[]" required>
+                                    <option value="">- Pilih -</option>
+                                    <?php foreach(['SD', 'SMP', 'SMA/SMK', 'D3', 'D4', 'S1', 'S2', 'S3'] as $p): ?>
+                                    <option value="<?= $p ?>" <?= $p==$pend['jenjang']?'selected':'' ?>><?= $p ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
-                            <div class="multi-row" style="margin-top:12px;">
-                                <div class="form-group">
-                                    <label>TMT Golongan Yayasan</label>
-                                    <input type="date" name="tmt_gol_yayasan[]" value="<?= $y['tmt'] ?>">
-                                </div>
-                                <div class="form-group">
-                                    <label>Upload SK Golongan Yayasan <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
-                                    <input type="file" name="dok_gol_yayasan[]" accept=".pdf,.jpg,.png">
-                                    <?php if($y['dokumen']): ?>
-                                        <a href="<?= $y['dokumen'] ?>" target="_blank" class="file-current"><i class="fas fa-file-pdf"></i> <?= basename($y['dokumen']) ?></a>
-                                        <input type="hidden" name="existing_dok_gol_yayasan[]" value="<?= $y['dokumen'] ?>">
-                                    <?php else: ?>
-                                        <input type="hidden" name="existing_dok_gol_yayasan[]" value="">
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <div class="dynamic-item">
-                        <div class="form-group">
-                            <label>Golongan Yayasan</label>
-                            <select name="gol_yayasan[]">
-                                <option value="">- Pilih Golongan -</option>
-                                <option value="III/a">III/a</option>
-                                <option value="III/b">III/b</option>
-                                <option value="III/c">III/c</option>
-                                <option value="III/d">III/d</option>
-                                <option value="IV/a">IV/a</option>
-                                <option value="IV/b">IV/b</option>
-                                <option value="IV/c">IV/c</option>
-                                <option value="IV/d">IV/d</option>
-                            </select>
+                            <div class="form-group"><label>Nama Institusi</label><input type="text" name="pend_institusi[]" value="<?= htmlspecialchars($pend['institusi']) ?>" required></div>
                         </div>
                         <div class="multi-row" style="margin-top:12px;">
-                            <div class="form-group"><label>TMT Golongan Yayasan</label><input type="date" name="tmt_gol_yayasan[]"></div>
-                            <div class="form-group"><label>Upload SK Golongan Yayasan <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label><input type="file" name="dok_gol_yayasan[]" accept=".pdf,.jpg,.png"></div>
+                            <div class="form-group"><label>Tahun Lulus</label><input type="number" name="pend_tahun[]" value="<?= htmlspecialchars($pend['tahun_lulus']) ?>" required></div>
+                            <div class="form-group">
+                                <label>Upload Ijazah/Transkrip <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label>
+                                <input type="hidden" name="existing_dok_pendidikan[]" value="<?= htmlspecialchars($pend['dokumen']) ?>">
+                                <input type="file" name="dok_pendidikan[]">
+                                <?php if($pend['dokumen']): ?><div class="file-preview"><i class="fas fa-check-circle" style="color:var(--success)"></i> File tersimpan</div><?php endif; ?>
+                            </div>
                         </div>
-                        <input type="hidden" name="existing_dok_gol_yayasan[]" value="">
                     </div>
+                    <?php endforeach; ?>
                 <?php endif; ?>
             </div>
-            <button type="button" onclick="addYayasan()" class="btn btn-outline" style="width:100%;"><i class="fas fa-plus"></i> Tambah Pangkat/Golongan Yayasan</button>
+            <button type="button" onclick="addPendidikan()" class="btn btn-outline" style="width:100%; margin-bottom: 20px;"><i class="fas fa-plus"></i> Tambah Pendidikan Lain</button>
+        </div>
+
+        <!-- Yayasan -->
+        <div class="form-section">
+            <h3><i class="fas fa-building"></i> Golongan Yayasan</h3>
+            <div id="yayasan-wrapper">
+                <?php foreach($yayasans as $yy): ?>
+                <div class="dynamic-item">
+                    <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
+                    <div class="form-group">
+                        <label>Golongan Yayasan</label>
+                        <select name="gol_yayasan[]">
+                            <option value="">- Pilih Golongan -</option>
+                            <?php foreach(['III/a','III/b','III/c','III/d','IV/a','IV/b','IV/c','IV/d'] as $g): ?>
+                            <option value="<?= $g ?>" <?= $g==$yy['golongan']?'selected':'' ?>><?= $g ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="multi-row" style="margin-top:12px;">
+                        <div class="form-group"><label>TMT Golongan</label><input type="date" name="tmt_gol_yayasan[]" value="<?= $yy['tmt'] ?>"></div>
+                        <div class="form-group">
+                            <label>Upload SK Golongan</label>
+                            <input type="hidden" name="existing_dok_gol_yayasan[]" value="<?= htmlspecialchars($yy['dokumen']) ?>">
+                            <input type="file" name="dok_gol_yayasan[]">
+                            <?php if($yy['dokumen']): ?><div class="file-preview"><i class="fas fa-check-circle" style="color:var(--success)"></i> File tersimpan</div><?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <button type="button" onclick="addYayasan()" class="btn btn-outline" style="width:100%;"><i class="fas fa-plus"></i> Tambah Golongan Yayasan</button>
         </div>
 
         <!-- Reward & Punishment -->
         <div class="form-section">
             <div class="multi-row">
-                <!-- Rewards -->
                 <div>
                     <h3><i class="fas fa-medal" style="color: #ed8936;"></i> Penghargaan</h3>
                     <div id="reward-wrapper">
-                        <?php while($r = $rewards->fetch_assoc()): ?>
+                        <?php if($rewards) while($r = $rewards->fetch_assoc()): ?>
                         <div class="dynamic-item">
-                            <input type="hidden" name="reward_id[]" value="<?= $r['id'] ?>">
-                            <input type="hidden" name="existing_reward_file[]" value="<?= $r['dokumen'] ?>">
-                            <input type="text" name="reward_desc[]" value="<?= htmlspecialchars($r['keterangan']) ?>" style="margin-bottom:8px">
-                            <div class="multi-row" style="grid-template-columns: 1fr 1fr auto; gap: 10px;">
-                                <input type="date" name="reward_date[]" value="<?= $r['tanggal'] ?>">
-                                <input type="file" name="reward_file[]">
-                                <button type="button" class="btn-icon delete-btn" style="color: var(--danger)"><i class="fas fa-trash"></i></button>
+                            <label class="delete-btn" style="position:absolute; right:15px; top:15px;">
+                                <input type="checkbox" name="delete_rewards[]" value="<?= $r['id'] ?>"> Hapus
+                            </label>
+                            <input type="hidden" name="reward_id[<?= $r['id'] ?>]" value="<?= $r['id'] ?>">
+                            <div class="form-group">
+                                <label>Deskripsi Penghargaan</label>
+                                <input type="text" name="reward_desc[<?= $r['id'] ?>]" value="<?= htmlspecialchars($r['keterangan']) ?>" required>
                             </div>
-                            <?php if($r['dokumen']): ?>
-                                <div style="font-size: 0.7rem; color: var(--accent); margin-top: 5px;"><i class="fas fa-file"></i> <?= $r['dokumen'] ?></div>
-                            <?php endif; ?>
+                            <div class="multi-row" style="margin-top:12px;">
+                                <div class="form-group"><label>Tanggal</label><input type="date" name="reward_date[<?= $r['id'] ?>]" value="<?= $r['tanggal'] ?>"></div>
+                                <div class="form-group">
+                                    <label>Upload Bukti</label>
+                                    <input type="hidden" name="existing_reward_file[<?= $r['id'] ?>]" value="<?= htmlspecialchars($r['dokumen']??'') ?>">
+                                    <input type="file" name="reward_file[<?= $r['id'] ?>]">
+                                    <?php if($r['dokumen']): ?><div class="file-preview"><i class="fas fa-check-circle" style="color:var(--success)"></i> File tersimpan</div><?php endif; ?>
+                                </div>
+                            </div>
                         </div>
                         <?php endwhile; ?>
                     </div>
                     <button type="button" onclick="addReward()" class="btn btn-outline" style="width: 100%;"><i class="fas fa-plus"></i> Tambah Penghargaan</button>
-                    <div id="deleted-rewards"></div>
                 </div>
-
-                <!-- Punishments -->
                 <div>
                     <h3><i class="fas fa-gavel" style="color: #e53e3e;"></i> Sanksi / Catatan</h3>
                     <div id="punishment-wrapper">
-                        <?php while($p = $punishments->fetch_assoc()): ?>
-                        <div class="dynamic-item">
-                            <input type="hidden" name="punish_id[]" value="<?= $p['id'] ?>">
-                            <input type="hidden" name="existing_punish_file[]" value="<?= $p['dokumen'] ?>">
-                            <input type="text" name="punish_desc[]" value="<?= htmlspecialchars($p['keterangan']) ?>" style="margin-bottom:8px">
-                            <div class="multi-row" style="grid-template-columns: 1fr 1fr auto; gap: 10px;">
-                                <input type="date" name="punish_date[]" value="<?= $p['tanggal'] ?>">
-                                <input type="file" name="punish_file[]">
-                                <button type="button" class="btn-icon delete-btn" style="color: var(--danger)"><i class="fas fa-trash"></i></button>
+                        <?php if($punishments) while($p = $punishments->fetch_assoc()): ?>
+                        <div class="dynamic-item" style="border-top: 4px solid var(--danger);">
+                            <label class="delete-btn" style="position:absolute; right:15px; top:15px;">
+                                <input type="checkbox" name="delete_punishments[]" value="<?= $p['id'] ?>"> Hapus
+                            </label>
+                            <input type="hidden" name="punish_id[<?= $p['id'] ?>]" value="<?= $p['id'] ?>">
+                            <div class="form-group">
+                                <label>Deskripsi Sanksi</label>
+                                <input type="text" name="punish_desc[<?= $p['id'] ?>]" value="<?= htmlspecialchars($p['keterangan']) ?>" required>
                             </div>
-                            <?php if($p['dokumen']): ?>
-                                <div style="font-size: 0.7rem; color: var(--accent); margin-top: 5px;"><i class="fas fa-file"></i> <?= $p['dokumen'] ?></div>
-                            <?php endif; ?>
+                            <div class="multi-row" style="margin-top:12px;">
+                                <div class="form-group"><label>Tanggal</label><input type="date" name="punish_date[<?= $p['id'] ?>]" value="<?= $p['tanggal'] ?>"></div>
+                                <div class="form-group">
+                                    <label>Upload Bukti</label>
+                                    <input type="hidden" name="existing_punish_file[<?= $p['id'] ?>]" value="<?= htmlspecialchars($p['dokumen']??'') ?>">
+                                    <input type="file" name="punish_file[<?= $p['id'] ?>]">
+                                    <?php if($p['dokumen']): ?><div class="file-preview"><i class="fas fa-check-circle" style="color:var(--success)"></i> File tersimpan</div><?php endif; ?>
+                                </div>
+                            </div>
                         </div>
                         <?php endwhile; ?>
                     </div>
                     <button type="button" onclick="addPunish()" class="btn btn-outline" style="width: 100%;"><i class="fas fa-plus"></i> Tambah Sanksi</button>
-                    <div id="deleted-punishments"></div>
                 </div>
             </div>
         </div>
 
         <div style="margin-top: 50px; text-align: right; border-top: 1px solid #e2e8f0; padding-top: 30px;">
             <a href="detail_pegawai.php?id=<?= $id ?>" class="btn" style="color: var(--text-muted); margin-right: 15px;">Batal</a>
-            <button type="submit" name="update" class="btn btn-primary" style="padding: 12px 40px;"><i class="fas fa-save"></i> Simpan Perubahan</button>
+            <button type="submit" name="update" class="btn btn-primary" style="padding: 12px 40px;"><i class="fas fa-save"></i> Perbarui Data</button>
         </div>
     </form>
 </div>
 
 <script>
+let newCounter = 0;
+function addReward() {
+  newCounter++;
+  const container = document.getElementById('reward-wrapper');
+  const html = `
+    <div class="dynamic-item">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
+        <div class="form-group"><label>Deskripsi Penghargaan</label><input type="text" name="reward_desc[n_${newCounter}]" required></div>
+        <div class="multi-row" style="margin-top:12px;">
+            <div class="form-group"><label>Tanggal</label><input type="date" name="reward_date[n_${newCounter}]"></div>
+            <div class="form-group"><label>Upload Bukti</label><input type="file" name="reward_file[n_${newCounter}]"></div>
+        </div>
+    </div>`;
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function addPunish() {
+  newCounter++;
+  const container = document.getElementById('punishment-wrapper');
+  const html = `
+    <div class="dynamic-item" style="border-top: 4px solid var(--danger);">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
+        <div class="form-group"><label>Deskripsi Sanksi</label><input type="text" name="punish_desc[n_${newCounter}]" required></div>
+        <div class="multi-row" style="margin-top:12px;">
+            <div class="form-group"><label>Tanggal</label><input type="date" name="punish_date[n_${newCounter}]"></div>
+            <div class="form-group"><label>Upload Bukti</label><input type="file" name="punish_file[n_${newCounter}]"></div>
+        </div>
+    </div>`;
+  container.insertAdjacentHTML('beforeend', html);
+}
+
 document.getElementById('tmtk_input').addEventListener('input', function() {
     if(this.value) document.getElementById('area_tmtk').classList.remove('hidden');
     else document.getElementById('area_tmtk').classList.add('hidden');
 });
 
-function addYayasan() {
-    const container = document.getElementById('yayasan-wrapper');
-    const div = document.createElement('div');
-    div.className = 'dynamic-item';
-    div.innerHTML = `
-        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
-        <div class="form-group">
-            <label>Golongan Yayasan</label>
-            <select name="gol_yayasan[]">
-                <option value="">- Pilih Golongan -</option>
-                <option value="III/a">III/a</option>
-                <option value="III/b">III/b</option>
-                <option value="III/c">III/c</option>
-                <option value="III/d">III/d</option>
-                <option value="IV/a">IV/a</option>
-                <option value="IV/b">IV/b</option>
-                <option value="IV/c">IV/c</option>
-                <option value="IV/d">IV/d</option>
-            </select>
-        </div>
-        <div class="multi-row" style="margin-top:12px;">
-            <div class="form-group"><label>TMT Golongan Yayasan</label><input type="date" name="tmt_gol_yayasan[]"></div>
-            <div class="form-group"><label>Upload SK Golongan Yayasan</label><input type="file" name="dok_gol_yayasan[]" accept=".pdf,.jpg,.png"></div>
-        </div>
-        <input type="hidden" name="existing_dok_gol_yayasan[]" value="">
-    `;
-    container.appendChild(div);
-}
-
 function addPendidikan() {
-    const container = document.getElementById('pendidikan-wrapper');
-    const div = document.createElement('div');
-    div.className = 'dynamic-item';
-    div.innerHTML = `
+    const html = `<div class="dynamic-item">
         <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
         <div class="multi-row">
             <div class="form-group">
                 <label>Jenjang / Tingkat</label>
                 <select name="pend_jenjang[]" required>
                     <option value="">- Pilih -</option>
-                    <option value="SD">SD</option><option value="SMP">SMP</option><option value="SMA/SMK">SMA/SMK</option><option value="D3">D3</option><option value="S1">S1</option><option value="S2">S2</option><option value="S3">S3</option>
+                    <option value="SD">SD</option><option value="SMP">SMP</option><option value="SMA/SMK">SMA/SMK</option>
+                    <option value="D3">D3</option><option value="D4">D4</option><option value="S1">S1</option>
+                    <option value="S2">S2</option><option value="S3">S3</option>
                 </select>
             </div>
-            <div class="form-group">
-                <label>Nama Institusi / Universitas</label>
-                <input type="text" name="pend_institusi[]" placeholder="Contoh: Universitas Indonesia" required>
-            </div>
+            <div class="form-group"><label>Nama Institusi / Universitas</label><input type="text" name="pend_institusi[]" required></div>
         </div>
         <div class="multi-row" style="margin-top:12px;">
-            <div class="form-group"><label>Tahun Lulus</label><input type="number" name="pend_tahun[]" min="1950" max="2100" placeholder="YYYY" required></div>
-            <div class="form-group"><label>Upload Ijazah <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label><input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png"></div>
+            <div class="form-group"><label>Tahun Lulus</label><input type="number" name="pend_tahun[]" required></div>
+            <div class="form-group"><label>Upload Ijazah/Transkrip <span style="color:var(--text-muted); font-weight:400;">(PDF/JPG)</span></label><input type="file" name="dok_pendidikan[]"></div>
         </div>
-        <input type="hidden" name="existing_dok_pendidikan[]" value="">
-    `;
-    container.appendChild(div);
+    </div>`;
+    document.getElementById('pendidikan-wrapper').insertAdjacentHTML('beforeend', html);
 }
 
-function addReward() {
-    const container = document.getElementById('reward-wrapper');
-    const div = document.createElement('div');
-    div.className = 'dynamic-item';
-    div.innerHTML = `
-        <input type="text" name="reward_desc[]" placeholder="Deskripsi Penghargaan" style="margin-bottom:8px">
-        <div class="multi-row" style="grid-template-columns: 1fr 1fr auto; gap: 10px;">
-            <input type="date" name="reward_date[]">
-            <input type="file" name="reward_file[]">
-            <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color: var(--danger)"><i class="fas fa-times"></i></button>
+function addYayasan() {
+    const html = `<div class="dynamic-item">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
+        <div class="form-group">
+            <label>Golongan Yayasan</label>
+            <select name="gol_yayasan[]">
+                <option value="">- Pilih Golongan -</option>
+                <option value="III/a">III/a</option><option value="III/b">III/b</option><option value="III/c">III/c</option><option value="III/d">III/d</option>
+                <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option><option value="IV/c">IV/c</option><option value="IV/d">IV/d</option>
+            </select>
         </div>
-    `;
-    container.appendChild(div);
+        <div class="multi-row" style="margin-top:12px;">
+            <div class="form-group"><label>TMT Golongan</label><input type="date" name="tmt_gol_yayasan[]"></div>
+            <div class="form-group"><label>Upload SK Golongan</label><input type="file" name="dok_gol_yayasan[]"></div>
+        </div>
+    </div>`;
+    document.getElementById('yayasan-wrapper').insertAdjacentHTML('beforeend', html);
 }
 
-function addPunish() {
-    const container = document.getElementById('punishment-wrapper');
-    const div = document.createElement('div');
-    div.className = 'dynamic-item';
-    div.innerHTML = `
-        <input type="text" name="punish_desc[]" placeholder="Deskripsi Sanksi" style="margin-bottom:8px">
-        <div class="multi-row" style="grid-template-columns: 1fr 1fr auto; gap: 10px;">
-            <input type="date" name="punish_date[]">
-            <input type="file" name="punish_file[]">
-            <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color: var(--danger)"><i class="fas fa-times"></i></button>
+function addRiwayatStatus() {
+    newCounter++;
+    const html = `
+    <div class="dynamic-item">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
+        <div class="multi-row">
+            <div class="form-group">
+                <label>Status Pegawai</label>
+                <select name="new_riwayat_status_pegawai[n_${newCounter}]" required>
+                    <option value="">- Pilih Status -</option>
+                    <option value="Tetap">Tetap</option>
+                    <option value="Tidak Tetap">Tidak Tetap</option>
+                </select>
+            </div>
+            <div class="form-group"><label>Unit Kerja</label><input type="text" name="new_riwayat_unit_kerja[n_${newCounter}]"></div>
         </div>
-    `;
-    container.appendChild(div);
+        <div class="multi-row" style="margin-top:12px;">
+            <div class="form-group"><label>Jabatan</label><input type="text" name="new_riwayat_posisi_jabatan[n_${newCounter}]"></div>
+            <div class="form-group"><label>TMT Berlaku</label><input type="date" name="new_riwayat_tmt_mulai[n_${newCounter}]" required></div>
+        </div>
+        <div class="form-group" style="margin-top:12px;">
+            <label>Dokumen SK Riwayat</label>
+            <input type="file" name="new_riwayat_file[n_${newCounter}]" accept=".pdf,.png,.jpg,.jpeg">
+        </div>
+    </div>`;
+    document.getElementById('riwayat-status-wrapper').insertAdjacentHTML('beforeend', html);
 }
-
-// Handle deletions of existing items
-document.querySelectorAll('.delete-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const item = this.closest('.dynamic-item');
-        const rid = item.querySelector('input[name="reward_id[]"]');
-        const pid = item.querySelector('input[name="punish_id[]"]');
-        
-        if (rid) {
-            const delWrapper = document.getElementById('deleted-rewards');
-            delWrapper.innerHTML += `<input type="hidden" name="delete_rewards[]" value="${rid.value}">`;
-        }
-        if (pid) {
-            const delWrapper = document.getElementById('deleted-punishments');
-            delWrapper.innerHTML += `<input type="hidden" name="delete_punishments[]" value="${pid.value}">`;
-        }
-        
-        item.style.position = 'relative';
-        item.innerHTML += '<div class="delete-overlay">Dihapus</div>';
-        setTimeout(() => item.classList.add('hidden'), 500);
-    });
-});
 </script>
 
 </body>

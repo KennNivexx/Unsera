@@ -85,7 +85,10 @@ CREATE TABLE `dosen` (
   `dok_kk` longblob,
   `dok_kk_name` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL,
   `dok_kk_type` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,
-  `foto_profil` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL
+  `foto_profil` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `status_keaktifan` varchar(32) COLLATE utf8mb4_general_ci DEFAULT 'Aktif',
+  `keterangan_keaktifan` text COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `tgl_mulai_tidak_bekerja` date DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -179,7 +182,10 @@ CREATE TABLE `pegawai` (
   `dok_tmtk` longblob,
   `dok_tmtk_name` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL,
   `dok_tmtk_type` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,
-  `foto_profil` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL
+  `foto_profil` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `status_keaktifan` varchar(32) COLLATE utf8mb4_general_ci DEFAULT 'Aktif',
+  `keterangan_keaktifan` text COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `tgl_mulai_tidak_bekerja` date DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -333,6 +339,33 @@ CREATE TABLE `pendidikan_pegawai` (
   `dokumen` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `status_pegawai_riwayat`
+--
+
+CREATE TABLE `status_pegawai_riwayat` (
+  `id` int NOT NULL,
+  `pegawai_id` int NOT NULL,
+  `status_pegawai` varchar(64) DEFAULT NULL,
+  `tmt` date DEFAULT NULL,
+  `dokumen` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `struktur_organisasi`
+--
+
+CREATE TABLE `struktur_organisasi` (
+  `id` int NOT NULL,
+  `nama_jabatan` varchar(255) NOT NULL,
+  `nama_pejabat` varchar(255) DEFAULT NULL,
+  `keterangan` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 --
 -- Indexes for dumped tables
 --
@@ -434,6 +467,19 @@ ALTER TABLE `pendidikan_pegawai`
   ADD PRIMARY KEY (`id`);
 
 --
+-- Indexes for table `status_pegawai_riwayat`
+--
+ALTER TABLE `status_pegawai_riwayat`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `pegawai_id` (`pegawai_id`);
+
+--
+-- Indexes for table `struktur_organisasi`
+--
+ALTER TABLE `struktur_organisasi`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- AUTO_INCREMENT for dumped tables
 --
 
@@ -528,6 +574,18 @@ ALTER TABLE `pendidikan_pegawai`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `status_pegawai_riwayat`
+--
+ALTER TABLE `status_pegawai_riwayat`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `struktur_organisasi`
+--
+ALTER TABLE `struktur_organisasi`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
 -- Constraints for dumped tables
 --
 
@@ -560,8 +618,3 @@ ALTER TABLE `reward`
 --
 ALTER TABLE `reward_pegawai`
   ADD CONSTRAINT `reward_pegawai_ibfk_1` FOREIGN KEY (`pegawai_id`) REFERENCES `pegawai` (`id`) ON DELETE CASCADE;
-COMMIT;
-
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

@@ -10,7 +10,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
     $email = $_POST['email'];
     $password = $_POST['password'];
 
-    $stmt = $conn->prepare("SELECT id, nama, password FROM admin WHERE email = ?");
+    $stmt = $conn->prepare("SELECT id, nama, password, jenis_kelamin FROM admin WHERE email = ?");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -19,6 +19,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         if (password_verify($password, $row['password']) || $password === $row['password']) {
             $_SESSION['admin_id'] = $row['id'];
             $_SESSION['admin_nama'] = $row['nama'];
+            $_SESSION['admin_jk'] = $row['jenis_kelamin'] ?? 'Laki-laki';
             
             if ($password === $row['password']) {
                 $newHash = password_hash($password, PASSWORD_DEFAULT);

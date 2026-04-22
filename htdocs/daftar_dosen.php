@@ -27,6 +27,15 @@ $where = count($where_clauses) > 0 ? " WHERE " . implode(" AND ", $where_clauses
 
 $data = $conn->query("SELECT * FROM dosen $where ORDER BY id DESC");
 
+// Pre-fetch all status riwayat grouped by dosen_id for efficiency
+$all_status_riwayat = [];
+$riwayat_result = $conn->query("SELECT * FROM status_dosen_riwayat ORDER BY tmt DESC, id DESC");
+if ($riwayat_result) {
+    while ($rr = $riwayat_result->fetch_assoc()) {
+        $all_status_riwayat[$rr['dosen_id']][] = $rr;
+    }
+}
+
 $breadcrumbs = [
     ['label' => 'Daftar Dosen', 'url' => '#']
 ];
@@ -127,15 +136,9 @@ $breadcrumbs = [
 <div class="main-content">
     <?php include 'components/navbar.php'; ?>
 
-    <div class="header-section" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
-        <div>
-            <h1>Manajemen Data Dosen</h1>
-            <p>Lihat dan kelola seluruh informasi dosen Universitas Serang Raya.</p>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--text-muted); margin-top:6px;">
-            <span style="width:9px;height:9px;background:#22c55e;border-radius:50%;box-shadow:0 0 0 0 rgba(34,197,94,0.5);animation:pulse-dot 2s infinite;display:inline-block;"></span>
-            Live &bull; Update: <span id="last-updated">--:--:--</span>
-        </div>
+    <div class="header-section" style="border-bottom: 2px solid var(--border-color); padding-bottom: 20px; margin-bottom: 30px;">
+        <h1 class="academic-title" style="font-size: 2.2rem; color: var(--text-main); margin-bottom: 8px;">Manajemen Akademisi</h1>
+        <p style="color: var(--text-muted); font-size: 1rem;">Data induk dosen dan tenaga pendidik Universitas Serang Raya.</p>
     </div>
 
     <div class="card">
@@ -176,46 +179,54 @@ $breadcrumbs = [
                     </tr>
                 </thead>
                 <tbody>
-                    <?php
-                    $no = 1;
+                    <?php 
                     if ($data->num_rows > 0) {
+                        $no = 1;
                         while($row = $data->fetch_assoc()) {
                             $badgeClass = 'badge-success';
-                            if(strtolower($row['status_dosen']) == 'tidak tetap') $badgeClass = 'badge-warning';
-                            if(strtolower($row['status_dosen']) == 'homebase') $badgeClass = 'badge-danger';
+                            if(strtolower($row['status_dosen'] ?? '') == 'tidak tetap') $badgeClass = 'badge-warning';
+                            if(strtolower($row['status_dosen'] ?? '') == 'homebase') $badgeClass = 'badge-danger';
                             
                             $initials = strtoupper(substr($row['nama_lengkap'], 0, 1));
                     ?>
                     <tr>
-                        <td><?= $no++ ?></td>
+                        <td><span style="font-weight: 700; color: #94a3b8;"><?= $no++ ?></span></td>
                         <td>
-                        <div class="name-cell">
+                            <div class="name-cell">
                                 <?php if(!empty($row['foto_profil'])): ?>
                                     <img src="<?= htmlspecialchars($row['foto_profil']) ?>" alt="Foto" class="avatar-img">
                                 <?php else: ?>
-                                    <div class="avatar-circle"><?= $initials ?></div>
+                                    <div class="avatar-circle" style="background: var(--primary-soft); color: var(--primary); border: 1px solid rgba(59, 130, 246, 0.2);"><?= $initials ?></div>
                                 <?php endif; ?>
                                 <div>
-                                    <a href="detail_dosen.php?id=<?= $row['id'] ?>" style="text-decoration: none; color: var(--primary); font-weight: 600;">
+                                    <a href="detail_dosen.php?id=<?= $row['id'] ?>" style="text-decoration: none; color: var(--text-main); font-weight: 700; font-size: 1rem;">
                                         <?= htmlspecialchars($row['nama_lengkap']) ?>
                                     </a>
-                                    <div style="font-size: 0.75rem; color: var(--text-muted);"><?= htmlspecialchars($row['homebase_prodi']) ?></div>
+                                    <div style="font-size: 0.8rem; color: #64748b; font-weight: 500;"><?= htmlspecialchars($row['homebase_prodi'] ?? '-') ?></div>
                                 </div>
                             </div>
                         </td>
                         <td>
-                            <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($row['status_dosen']) ?></span>
+                            <span class="badge <?= $badgeClass ?>" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;"><?= htmlspecialchars($row['status_dosen'] ?? '-') ?></span>
                         </td>
-                        <td>
+                        <td style="text-align: center;">
                             <div class="action-btns">
-                                <a href="detail_dosen.php?id=<?= $row['id'] ?>" class="btn-icon" title="Detail" style="color: var(--primary);"><i class="fas fa-eye"></i> Detail</a>
+                                <a href="detail_dosen.php?id=<?= $row['id'] ?>" class="btn" style="padding: 6px 14px; font-size: 0.75rem; background: var(--primary-soft); color: var(--primary); border: 1px solid rgba(30, 58, 138, 0.1);">
+                                    <i class="fas fa-eye"></i> Detail Profil
+                                </a>
                             </div>
                         </td>
                     </tr>
                     <?php 
                         }
                     } else {
-                        echo "<tr><td colspan='4' style='text-align: center; padding: 40px; color: var(--text-muted);'>Tidak ada data ditemukan.</td></tr>";
+                        echo "<tr><td colspan='4'>
+                            <div class='empty-state'>
+                                <i class='fas fa-search-minus'></i>
+                                <h4>Data Tidak Ditemukan</h4>
+                                <p>Coba gunakan kata kunci lain atau pilih filter yang berbeda.</p>
+                            </div>
+                        </td></tr>";
                     }
                     ?>
                 </tbody>
@@ -264,25 +275,48 @@ function renderTable(rows) {
     const tbody = document.querySelector('.data-table tbody');
     if (!tbody) return;
     if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted);">Tidak ada data ditemukan.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4">
+            <div class="empty-state">
+                <i class="fas fa-search-minus"></i>
+                <h4>Data Tidak Ditemukan</h4>
+                <p>Coba gunakan kata kunci lain atau pilih filter yang berbeda.</p>
+            </div>
+        </td></tr>`;
         return;
     }
-    tbody.innerHTML = rows.map((r, i) => `
+    tbody.innerHTML = rows.map((r, i) => {
+        let badgeClass = 'badge-success';
+        if(r.status_dosen && r.status_dosen.toLowerCase() === 'tidak tetap') badgeClass = 'badge-warning';
+        if(r.status_dosen && r.status_dosen.toLowerCase() === 'homebase') badgeClass = 'badge-danger';
+        
+        const initials = r.nama_lengkap.charAt(0).toUpperCase();
+        
+        return `
         <tr>
-            <td>${i+1}</td>
+            <td><span style="font-weight: 700; color: #94a3b8;">${i+1}</span></td>
             <td>
                 <div class="name-cell">
-                    ${r.foto_profil ? `<img src="${escHtml(r.foto_profil)}" alt="Foto" class="avatar-img">` : `<div class="avatar-circle">${r.nama_lengkap.charAt(0).toUpperCase()}</div>`}
+                    ${r.foto_profil ? `<img src="${escHtml(r.foto_profil)}" alt="Foto" class="avatar-img">` : `<div class="avatar-circle" style="background: var(--primary-soft); color: var(--primary); border: 1px solid rgba(59, 130, 246, 0.2);">${initials}</div>`}
                     <div>
-                        <a href="detail_dosen.php?id=${r.id}" style="text-decoration:none;color:var(--primary);font-weight:600;">${escHtml(r.nama_lengkap)}</a>
-                        <div style="font-size:0.75rem;color:var(--text-muted);">${escHtml(r.homebase_prodi||'')}</div>
+                        <a href="detail_dosen.php?id=${r.id}" style="text-decoration: none; color: var(--text-main); font-weight: 700; font-size: 1rem;">
+                            ${escHtml(r.nama_lengkap)}
+                        </a>
+                        <div style="font-size: 0.8rem; color: #64748b; font-weight: 500;">${escHtml(r.homebase_prodi || '-')}</div>
                     </div>
                 </div>
             </td>
-            <td><span class="badge ${badgeClass(r.status_dosen)}">${escHtml(r.status_dosen||'-')}</span></td>
-            <td style="text-align:center;"><div class="action-btns"><a href="detail_dosen.php?id=${r.id}" class="btn-icon" style="color:var(--primary);"><i class="fas fa-eye"></i> Detail</a></div></td>
-        </tr>`)
-    .join('');
+            <td>
+                <span class="badge ${badgeClass}" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">${escHtml(r.status_dosen || '-')}</span>
+            </td>
+            <td style="text-align: center;">
+                <div class="action-btns">
+                    <a href="detail_dosen.php?id=${r.id}" class="btn" style="padding: 6px 14px; font-size: 0.75rem; background: var(--primary-soft); color: var(--primary); border: 1px solid rgba(30, 58, 138, 0.1);">
+                        <i class="fas fa-eye"></i> Detail Profil
+                    </a>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
 }
 
 function escHtml(str) {
@@ -297,7 +331,8 @@ function fetchDosen() {
         .then(r => r.json())
         .then(d => {
             renderTable(d.rows);
-            document.getElementById('last-updated').textContent = d.timestamp;
+            const tsEl = document.getElementById('last-updated');
+            if (tsEl) tsEl.textContent = d.timestamp;
             if (d.rows.length > prevCount) {
                 showToast(`Dosen baru ditambahkan! Total: ${d.rows.length}`, 'success');
             } else if (d.rows.length < prevCount) {

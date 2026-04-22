@@ -17,8 +17,8 @@ if ($action === 'stats') {
     $dosenHomebase = $conn->query("SELECT COUNT(*) as c FROM dosen WHERE LOWER(status_dosen)='homebase'")->fetch_assoc()['c'];
 
     $totalPegawai      = $conn->query("SELECT COUNT(*) as c FROM pegawai")->fetch_assoc()['c'];
-    $pegawaiTetap      = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE jenis_pegawai='tetap'")->fetch_assoc()['c'];
-    $pegawaiTidakTetap = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE jenis_pegawai='tdk tetap'")->fetch_assoc()['c'];
+    $pegawaiTetap      = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE LOWER(jenis_pegawai)='tetap'")->fetch_assoc()['c'];
+    $pegawaiTidakTetap = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE LOWER(jenis_pegawai)='tidak tetap' OR LOWER(jenis_pegawai)='tdk tetap'")->fetch_assoc()['c'];
 
     // Jabfung breakdown per jenis
     $jabfungBreakdown = [];
@@ -115,9 +115,32 @@ if ($action === 'stats') {
     
     $where = count($where_clauses) > 0 ? " WHERE " . implode(" AND ", $where_clauses) : "";
     
-    $data = $conn->query("SELECT id, nama_lengkap, status_dosen, homebase_prodi, no_serdos, foto_profil FROM dosen$where ORDER BY id DESC");
+    $data = $conn->query("SELECT id, nama_lengkap, status_dosen, jenis_dosen, jabatan_struktural, homebase_prodi, no_serdos, foto_profil FROM dosen$where ORDER BY id DESC");
     $rows = [];
-    while ($r = $data->fetch_assoc()) $rows[] = $r;
+    while ($r = $data->fetch_assoc()) {
+        // Fetch status riwayat for each dosen
+        $riwayat = [];
+        $rw_result = $conn->query("SELECT status_dosen, tmt, dokumen, 'kepegawaian' as type FROM status_dosen_riwayat WHERE dosen_id = {$r['id']} ORDER BY tmt DESC, id DESC");
+        if ($rw_result) {
+            while ($rw = $rw_result->fetch_assoc()) $riwayat[] = $rw;
+        }
+
+        // Fetch penugasan riwayat
+        $rw_pen = $conn->query("SELECT jenis_dosen as status_dosen, tmt, dokumen, 'penugasan' as type, jabatan_struktural FROM penugasan_dosen_riwayat WHERE dosen_id = {$r['id']} ORDER BY tmt DESC, id DESC");
+        if ($rw_pen) {
+            while ($rw = $rw_pen->fetch_assoc()) {
+                $riwayat[] = $rw;
+            }
+        }
+
+        // Sort combined riwayat by TMT
+        usort($riwayat, function($a, $b) {
+            return strtotime($b['tmt'] ?? '1970-01-01') - strtotime($a['tmt'] ?? '1970-01-01');
+        });
+
+        $r['status_riwayat'] = $riwayat;
+        $rows[] = $r;
+    }
     echo json_encode(['rows' => $rows, 'timestamp' => date('H:i:s') . ' WIB']);
 
 } elseif ($action === 'pegawai_list') {
@@ -125,11 +148,20 @@ if ($action === 'stats') {
     $where  = '';
     if ($search) {
         $s = $conn->real_escape_string($search);
-        $where = " WHERE nama_lengkap LIKE '%$s%' OR jenis_pegawai LIKE '%$s%'";
+        $where = " WHERE nama_lengkap LIKE '%$s%' OR status_pegawai LIKE '%$s%'";
     }
-    $data = $conn->query("SELECT id, nama_lengkap, jenis_pegawai, posisi_jabatan, unit_kerja, riwayat_pendidikan, foto_profil FROM pegawai$where ORDER BY id DESC");
+    $data = $conn->query("SELECT id, nama_lengkap, status_pegawai, posisi_jabatan, unit_kerja, riwayat_pendidikan, foto_profil FROM pegawai$where ORDER BY id DESC");
     $rows = [];
-    while ($r = $data->fetch_assoc()) $rows[] = $r;
+    while ($r = $data->fetch_assoc()) {
+        $id_peg = $r['id'];
+        $riw = [];
+        $res_riw = $conn->query("SELECT status_pegawai as status_dosen, tmt as tmt, dokumen FROM status_pegawai_riwayat WHERE pegawai_id = $id_peg ORDER BY tmt DESC, id DESC");
+        if ($res_riw) {
+            while($rw = $res_riw->fetch_assoc()) $riw[] = $rw;
+        }
+        $r['status_riwayat'] = $riw;
+        $rows[] = $r;
+    }
     echo json_encode(['rows' => $rows, 'timestamp' => date('H:i:s') . ' WIB']);
 
 } elseif ($action === 'surat_list') {
