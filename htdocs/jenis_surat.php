@@ -5,7 +5,7 @@ if (!isset($_SESSION['admin_id'])) {
     exit;
 }
 
-// Handle add new jenis
+// Handle actions
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] == 'tambah' && !empty(trim($_POST['nama_jenis']))) {
         $nama = trim($_POST['nama_jenis']);
@@ -46,115 +46,39 @@ $result = $conn->query("SELECT js.*, (SELECT COUNT(*) FROM data_surat WHERE jeni
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kelola Jenis Surat | UNSERA</title>
-    <link rel="stylesheet" href="style.css?v=4">
+    <title>Kategori Surat | UNSERA Portal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css?v=<?= time() ?>">
     <style>
-        .jenis-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 20px;
-            margin-top: 24px;
+        .category-card {
+            background: white; border-radius: 24px; border: 1px solid #f1f5f9;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            height: 100%; display: flex; flex-direction: column;
+            overflow: hidden;
         }
-        .jenis-card {
-            background: white;
-            border-radius: var(--radius-lg);
-            padding: 28px;
-            border: 1px solid var(--border-color);
-            transition: var(--transition);
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .jenis-card:hover {
-            transform: translateY(-4px);
-            box-shadow: var(--shadow-lg);
+        .category-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
             border-color: var(--primary);
         }
-        .jenis-card .icon-wrapper {
-            width: 50px;
-            height: 50px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--primary), #3b82f6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 1.3rem;
+        .category-icon {
+            width: 60px; height: 60px; border-radius: 16px;
+            background: rgba(37,99,235,0.1); color: var(--primary);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; margin-bottom: 20px;
         }
-        .jenis-card h3 {
-            font-size: 1.1rem;
-            margin: 0;
-            color: var(--text-main);
-        }
-        .jenis-card .badge {
-            background: #f0f5ff;
-            color: var(--primary);
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .jenis-card .actions {
-            display: flex;
-            gap: 8px;
-            margin-top: auto;
-        }
-        .jenis-card .actions a, .jenis-card .actions button {
-            flex: 1;
-            text-align: center;
-        }
-        .add-card {
-            border: 2px dashed var(--border-color);
-            background: #f8fafc;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
+        .add-category-btn {
+            border: 2px dashed #cbd5e1; border-radius: 24px;
+            height: 100%; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            transition: all 0.3s; cursor: pointer; color: #64748b;
             min-height: 200px;
-            transition: var(--transition);
         }
-        .add-card:hover {
-            border-color: var(--primary);
-            background: #f0f5ff;
-        }
-        .add-card .add-icon {
-            font-size: 2.5rem;
-            color: var(--text-muted);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-        }
-        .add-card:hover .add-icon { color: var(--primary); }
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-        .modal-overlay.active { display: flex; }
-        .modal-box {
-            background: white;
-            border-radius: var(--radius-lg);
-            padding: 36px;
-            width: 100%;
-            max-width: 450px;
-            box-shadow: var(--shadow-lg);
-        }
-        .modal-box h3 {
-            margin-bottom: 20px;
-            font-size: 1.2rem;
-            color: var(--text-main);
+        .add-category-btn:hover {
+            border-color: var(--primary); background: rgba(37,99,235,0.02);
+            color: var(--primary);
         }
     </style>
 </head>
@@ -165,179 +89,120 @@ $result = $conn->query("SELECT js.*, (SELECT COUNT(*) FROM data_surat WHERE jeni
 <div class="main-content">
     <?php include 'components/navbar.php'; ?>
 
-    <div class="header-section" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
-        <div>
-            <h1><i class="fas fa-envelope-open-text" style="margin-right:10px;"></i>Kelola Jenis Surat</h1>
-            <p>Tambah, edit, atau hapus jenis-jenis surat yang tersedia di sistem.</p>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--text-muted); margin-top:6px;">
-            <span style="width:9px;height:9px;background:#22c55e;border-radius:50%;box-shadow:0 0 0 0 rgba(34,197,94,0.5);animation:pulse-dot 2s infinite;display:inline-block;"></span>
-            Live &bull; Update: <span id="last-updated">--:--:--</span>
-        </div>
-    </div>
-
-    <div class="jenis-grid" id="jenis-grid">
-        <?php while($row = $result->fetch_assoc()): ?>
-        <div class="jenis-card">
-            <div class="icon-wrapper"><i class="fas fa-file-alt"></i></div>
-            <h3><?= htmlspecialchars($row['nama_jenis']) ?></h3>
-            <span class="badge"><i class="fas fa-folder"></i> <?= $row['total_surat'] ?> surat</span>
-            <div class="actions">
-                <a href="data_surat.php?jenis_id=<?= $row['id'] ?>" class="btn btn-primary" style="font-size: 0.85rem; padding: 8px 16px;">
-                    <i class="fas fa-eye"></i> Lihat
-                </a>
-                <button type="button" onclick="openEditModal(<?= $row['id'] ?>, '<?= htmlspecialchars(addslashes($row['nama_jenis'])) ?>')" class="btn btn-outline" style="font-size: 0.85rem; padding: 8px 16px;">
-                    <i class="fas fa-edit"></i> Edit
-                </button>
-                <form method="POST" style="flex:1; display:flex;" onsubmit="return confirm('Hapus jenis surat ini? Semua data surat terkait juga akan dihapus.')">
-                    <input type="hidden" name="action" value="hapus">
-                    <input type="hidden" name="id" value="<?= $row['id'] ?>">
-                    <button type="submit" class="btn btn-outline" style="font-size: 0.85rem; padding: 8px 16px; color: var(--danger); border-color: var(--danger); width:100%;">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </form>
+    <div class="container-fluid px-4 py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="fw-bold mb-1" style="font-family: 'Outfit', sans-serif;">Kategori Arsip Surat</h2>
+                <p class="text-muted">Kelola pengelompokan dokumen dan surat menyurat universitas.</p>
+            </div>
+            <div class="d-flex align-items-center gap-2 text-muted small">
+                <span class="spinner-grow spinner-grow-sm text-success"></span>
+                <span>Auto-Sync Active</span>
             </div>
         </div>
-        <?php endwhile; ?>
-        <div class="jenis-card add-card" onclick="openAddModal()">
-            <div class="add-icon">
-                <i class="fas fa-plus-circle"></i>
-                <span style="font-size: 0.95rem; font-weight: 600;">Tambah Jenis Surat</span>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- Add Modal -->
-<div class="modal-overlay" id="addModal">
-    <div class="modal-box">
-        <h3><i class="fas fa-plus-circle" style="color: var(--primary); margin-right:8px;"></i>Tambah Jenis Surat Baru</h3>
-        <form method="POST">
-            <input type="hidden" name="action" value="tambah">
-            <div class="form-group">
-                <label>Nama Jenis Surat</label>
-                <input type="text" name="nama_jenis" placeholder="Contoh: Surat Perjanjian Kerja" required>
-            </div>
-            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
-                <button type="button" onclick="closeModal('addModal')" class="btn btn-outline">Batal</button>
-                <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Tambah</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Edit Modal -->
-<div class="modal-overlay" id="editModal">
-    <div class="modal-box">
-        <h3><i class="fas fa-edit" style="color: var(--primary); margin-right:8px;"></i>Edit Jenis Surat</h3>
-        <form method="POST">
-            <input type="hidden" name="action" value="edit">
-            <input type="hidden" name="id" id="edit_id">
-            <div class="form-group">
-                <label>Nama Jenis Surat</label>
-                <input type="text" name="nama_jenis" id="edit_nama" required>
-            </div>
-            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
-                <button type="button" onclick="closeModal('editModal')" class="btn btn-outline">Batal</button>
-                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Simpan</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<style>
-@keyframes pulse-dot { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.6); } 70% { box-shadow: 0 0 0 8px rgba(34,197,94,0); } 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); } }
-#toast-container { position:fixed; bottom:24px; right:24px; z-index:9999; display:flex; flex-direction:column; gap:10px; }
-.toast { background:#1e293b; color:white; padding:14px 20px; border-radius:12px; font-size:0.9rem; box-shadow:0 8px 30px rgba(0,0,0,0.25); display:flex; align-items:center; gap:12px; animation:slide-in 0.4s ease; max-width:320px; border-left:4px solid #3b82f6; }
-.toast.success { border-color:#22c55e; }
-@keyframes slide-in { from { transform:translateX(100px); opacity:0; } to { transform:translateX(0); opacity:1; } }
-@keyframes slide-out { from { transform:translateX(0); opacity:1; } to { transform:translateX(100px); opacity:0; } }
-</style>
-
-<div id="toast-container"></div>
-
-<script>
-let prevCount = <?= $result->num_rows ?>;
-function showToast(msg, type='info') {
-    const c = document.getElementById('toast-container');
-    const t = document.createElement('div');
-    t.className = 'toast ' + type;
-    t.innerHTML = `<i class="fas fa-${type==='success'?'check-circle':'info-circle'}"></i><span>${msg}</span>`;
-    c.appendChild(t);
-    setTimeout(() => { t.style.animation='slide-out 0.4s ease forwards'; setTimeout(()=>t.remove(),400); }, 4000);
-}
-
-function escHtml(str) {
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function fetchJenisSurat() {
-    fetch('api_realtime.php?action=jenis_surat_list')
-        .then(r => r.json())
-        .then(d => {
-            const grid = document.getElementById('jenis-grid');
-            if (!grid) return;
-            
-            const html = d.rows.map(r => `
-                <div class="jenis-card">
-                    <div class="icon-wrapper"><i class="fas fa-file-alt"></i></div>
-                    <h3>${escHtml(r.nama_jenis)}</h3>
-                    <span class="badge"><i class="fas fa-folder"></i> ${r.total_surat} surat</span>
-                    <div class="actions">
-                        <a href="data_surat.php?jenis_id=${r.id}" class="btn btn-primary" style="font-size: 0.85rem; padding: 8px 16px;">
-                            <i class="fas fa-eye"></i> Lihat
+        <div class="row g-4" id="categoryGrid">
+            <?php while($row = $result->fetch_assoc()): ?>
+            <div class="col-md-4 col-lg-3">
+                <div class="category-card p-4">
+                    <div class="category-icon"><i class="fas fa-folder-open"></i></div>
+                    <h5 class="fw-bold mb-1 text-dark"><?= htmlspecialchars($row['nama_jenis']) ?></h5>
+                    <p class="text-muted small mb-4"><?= $row['total_surat'] ?> Dokumen Tersimpan</p>
+                    
+                    <div class="mt-auto d-flex gap-2">
+                        <a href="data_surat.php?jenis_id=<?= $row['id'] ?>" class="btn btn-primary flex-grow-1 rounded-pill small fw-bold">
+                            BUKA ARSIP
                         </a>
-                        <button type="button" onclick="openEditModal(${r.id}, '${escHtml(r.nama_jenis).replace(/'/g, "\\'")}')" class="btn btn-outline" style="font-size: 0.85rem; padding: 8px 16px;">
-                            <i class="fas fa-edit"></i> Edit
+                        <button class="btn btn-light rounded-circle" onclick="editCategory(<?= $row['id'] ?>, '<?= addslashes($row['nama_jenis']) ?>')">
+                            <i class="fas fa-pen small"></i>
                         </button>
-                        <form method="POST" style="flex:1; display:flex;" onsubmit="return confirm('Hapus jenis surat ini? Semua data surat terkait juga akan dihapus.')">
-                            <input type="hidden" name="action" value="hapus">
-                            <input type="hidden" name="id" value="${r.id}">
-                            <button type="submit" class="btn btn-outline" style="font-size: 0.85rem; padding: 8px 16px; color: var(--danger); border-color: var(--danger); width:100%;">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </form>
+                        <button class="btn btn-light rounded-circle text-danger" onclick="deleteCategory(<?= $row['id'] ?>)">
+                            <i class="fas fa-trash small"></i>
+                        </button>
                     </div>
                 </div>
-            `).join('') + `
-                <div class="jenis-card add-card" onclick="openAddModal()">
-                    <div class="add-icon">
-                        <i class="fas fa-plus-circle"></i>
-                        <span style="font-size: 0.95rem; font-weight: 600;">Tambah Jenis Surat</span>
+            </div>
+            <?php endwhile; ?>
+            
+            <div class="col-md-4 col-lg-3">
+                <div class="add-category-btn" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+                    <i class="fas fa-plus-circle fs-2 mb-2"></i>
+                    <span class="fw-bold">Tambah Kategori</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Tambah -->
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">Kategori Baru</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="tambah">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Nama Kategori Surat</label>
+                        <input type="text" name="nama_jenis" class="form-control rounded-3" placeholder="Contoh: SK Rektor, Nota Dinas, dll" required>
                     </div>
                 </div>
-            `;
-            
-            grid.innerHTML = html;
-            document.getElementById('last-updated').textContent = d.timestamp;
-            
-            if (d.rows.length > prevCount) showToast(`Jenis surat baru ditambahkan. Total: ${d.rows.length}`, 'success');
-            else if (d.rows.length < prevCount) showToast(`Data jenis surat diperbarui. Total: ${d.rows.length}`, 'info');
-            
-            prevCount = d.rows.length;
-        });
-}
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4">Buat Kategori</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
-setInterval(fetchJenisSurat, 5000);
+<!-- Modal Edit -->
+<div class="modal fade" id="editCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">Edit Kategori</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="edit">
+                    <input type="hidden" name="id" id="edit_cat_id">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Nama Kategori Surat</label>
+                        <input type="text" name="nama_jenis" id="edit_cat_nama" class="form-control rounded-3" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4">Simpan Perubahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
-function openAddModal() {
-    document.getElementById('addModal').classList.add('active');
-}
-function openEditModal(id, nama) {
-    document.getElementById('edit_id').value = id;
-    document.getElementById('edit_nama').value = nama;
-    document.getElementById('editModal').classList.add('active');
-}
-function closeModal(id) {
-    document.getElementById(id).classList.remove('active');
-}
-// Close modal on backdrop click
-document.querySelectorAll('.modal-overlay').forEach(m => {
-    m.addEventListener('click', function(e) {
-        if (e.target === this) this.classList.remove('active');
-    });
-});
+<form id="deleteForm" method="POST" style="display:none;">
+    <input type="hidden" name="action" value="hapus">
+    <input type="hidden" name="id" id="delete_id">
+</form>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    function editCategory(id, nama) {
+        document.getElementById('edit_cat_id').value = id;
+        document.getElementById('edit_cat_nama').value = nama;
+        new bootstrap.Modal(document.getElementById('editCategoryModal')).show();
+    }
+    function deleteCategory(id) {
+        if(confirm('Hapus kategori ini? Semua arsip di dalamnya akan terhapus secara permanen.')) {
+            document.getElementById('delete_id').value = id;
+            document.getElementById('deleteForm').submit();
+        }
+    }
 </script>
-
 </body>
 </html>

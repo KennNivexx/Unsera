@@ -17,8 +17,9 @@ if ($action === 'stats') {
     $dosenHomebase = $conn->query("SELECT COUNT(*) as c FROM dosen WHERE LOWER(status_dosen)='homebase'")->fetch_assoc()['c'];
 
     $totalPegawai      = $conn->query("SELECT COUNT(*) as c FROM pegawai")->fetch_assoc()['c'];
-    $pegawaiTetap      = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE LOWER(jenis_pegawai)='tetap'")->fetch_assoc()['c'];
-    $pegawaiTidakTetap = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE LOWER(jenis_pegawai)='tidak tetap' OR LOWER(jenis_pegawai)='tdk tetap'")->fetch_assoc()['c'];
+    $pegawaiTetap      = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE LOWER(status_pegawai)='tetap' OR LOWER(jenis_pegawai)='tetap'")->fetch_assoc()['c'];
+    $pegawaiTidakTetap = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE LOWER(status_pegawai)='tidak tetap' OR LOWER(status_pegawai)='tdk tetap' OR LOWER(jenis_pegawai)='tidak tetap' OR LOWER(jenis_pegawai)='tdk tetap'")->fetch_assoc()['c'];
+
 
     // Jabfung breakdown per jenis
     $jabfungBreakdown = [];
@@ -78,6 +79,29 @@ if ($action === 'stats') {
         }
     }
 
+    // Education Aggregation
+    $eduDosen = [];
+    $resEduD = $conn->query("SELECT jenjang, COUNT(*) as count FROM pendidikan_dosen GROUP BY jenjang");
+    if ($resEduD) {
+        while($row = $resEduD->fetch_assoc()) {
+            $j = strtoupper(trim($row['jenjang']));
+            if ($j === '' || $j === '-') continue;
+            $eduDosen[$j] = (int)$row['count'];
+        }
+    }
+    arsort($eduDosen);
+
+    $eduPegawai = [];
+    $resEduP = $conn->query("SELECT jenjang, COUNT(*) as count FROM pendidikan_pegawai GROUP BY jenjang");
+    if ($resEduP) {
+        while($row = $resEduP->fetch_assoc()) {
+            $j = strtoupper(trim($row['jenjang']));
+            if ($j === '' || $j === '-') continue;
+            $eduPegawai[$j] = (int)$row['count'];
+        }
+    }
+    arsort($eduPegawai);
+
     echo json_encode([
         'totalDosen'        => $totalDosen,
         'dosenTetap'        => $dosenTetap,
@@ -87,6 +111,8 @@ if ($action === 'stats') {
         'pegawaiTetap'      => $pegawaiTetap,
         'pegawaiTidakTetap' => $pegawaiTidakTetap,
         'jabfungBreakdown'  => $jabfungBreakdown,
+        'eduDosen'         => $eduDosen,
+        'eduPegawai'       => $eduPegawai,
         'golLldikti'        => $golLldikti,
         'golLldikti_tmt'    => $golLldikti_tmt,
         'golYayasan'        => $golYayasan,
@@ -167,7 +193,7 @@ if ($action === 'stats') {
 } elseif ($action === 'surat_list') {
     $jenis_id = (int)($_GET['jenis_id'] ?? 0);
     if (!$jenis_id) { echo json_encode(['rows' => []]); exit; }
-    $data = $conn->query("SELECT * FROM data_surat WHERE jenis_id=$jenis_id ORDER BY tanggal DESC, id DESC");
+    $data = $conn->query("SELECT * FROM data_surat WHERE jenis_id=$jenis_id ORDER BY tanggal ASC, id ASC");
     $rows = [];
     while ($r = $data->fetch_assoc()) $rows[] = $r;
     echo json_encode(['rows' => $rows, 'timestamp' => date('H:i:s') . ' WIB']);
@@ -178,7 +204,56 @@ if ($action === 'stats') {
     while ($r = $data->fetch_assoc()) $rows[] = $r;
     echo json_encode(['rows' => $rows, 'timestamp' => date('H:i:s') . ' WIB']);
 
+} elseif ($action === 'tidak_aktif_dosen') {
+    $data = $conn->query("SELECT id, nama_lengkap, nip, nidn, status_keaktifan, keterangan_keaktifan, tgl_mulai_tidak_bekerja, foto_profil 
+                          FROM dosen WHERE status_keaktifan = 'Tidak Aktif' OR status_dosen = 'Tidak Aktif' ORDER BY tgl_mulai_tidak_bekerja DESC");
+    $rows = [];
+    while ($r = $data->fetch_assoc()) $rows[] = $r;
+    echo json_encode(['rows' => $rows, 'timestamp' => date('H:i:s') . ' WIB']);
+
+} elseif ($action === 'tidak_aktif_pegawai') {
+    $data = $conn->query("SELECT id, nama_lengkap, posisi_jabatan, status_keaktifan, keterangan_keaktifan, tgl_mulai_tidak_bekerja as tmtk, tmt_tidak_kerja, unit_kerja, foto_profil 
+                          FROM pegawai WHERE status_keaktifan = 'Tidak Aktif' OR tmt_tidak_kerja IS NOT NULL ORDER BY tmt_tidak_kerja DESC");
+    $rows = [];
+    while ($r = $data->fetch_assoc()) $rows[] = $r;
+    echo json_encode(['rows' => $rows, 'timestamp' => date('H:i:s') . ' WIB']);
+
+} elseif ($action === 'struktur_list') {
+    $roots = [];
+    $rootsResult = $conn->query("SELECT * FROM struktur_organisasi WHERE parent_id IS NULL ORDER BY id ASC");
+    if ($rootsResult) {
+        while ($r = $rootsResult->fetch_assoc()) $roots[] = $r;
+    }
+    $allChildren = [];
+    $childResult = $conn->query("SELECT * FROM struktur_organisasi WHERE parent_id IS NOT NULL ORDER BY id ASC");
+    if ($childResult) {
+        while ($row = $childResult->fetch_assoc()) {
+            $allChildren[$row['parent_id']][] = $row;
+        }
+    }
+    echo json_encode(['roots' => $roots, 'children' => $allChildren, 'timestamp' => date('H:i:s') . ' WIB']);
+
+} elseif ($action === 'update_sub_item') {
+    $id = (int)($_POST['id'] ?? 0);
+    $field = $_POST['field'] ?? '';
+    $value = trim($_POST['value'] ?? '');
+    if ($field === 'nama_jabatan' || $field === 'nama_pejabat') {
+        $stmt = $conn->prepare("UPDATE struktur_organisasi SET $field = ? WHERE id = ?");
+        $stmt->bind_param("si", $value, $id);
+        $stmt->execute();
+        $stmt->close();
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Invalid field']);
+    }
+
+} elseif ($action === 'delete_sub_item') {
+    $id = (int)($_POST['id'] ?? 0);
+    $conn->query("DELETE FROM struktur_organisasi WHERE id = $id");
+    echo json_encode(['success' => true]);
+
 } else {
     echo json_encode(['error' => 'Unknown action']);
 }
 ?>
+

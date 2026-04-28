@@ -41,14 +41,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $tmk = !empty($_POST['tmk']) ? $_POST['tmk'] : null;
     $tmtk = !empty($_POST['tmtk']) ? $_POST['tmtk'] : null;
     $ket_tidak_kerja = $_POST['ket_tidak_kerja'] ?? '';
-    
-    $status_keaktifan = $_POST['status_keaktifan'] ?? null;
-    $keterangan_keaktifan = '';
     $tgl_mulai_tidak_bekerja = !empty($_POST['tgl_mulai_tidak_bekerja']) ? $_POST['tgl_mulai_tidak_bekerja'] : null;
     
-    if($status_keaktifan === 'Tidak Aktif') {
+    $status_keaktifan_raw = $_POST['status_keaktifan'] ?? 'Aktif';
+    $status_keaktifan = 'Aktif'; // Default to Aktif for special statuses
+    $keterangan_keaktifan = '';
+    
+    if($status_keaktifan_raw === 'Tidak Aktif') {
+        $status_keaktifan = 'Tidak Aktif';
         $keterangan_keaktifan = $_POST['ket_tidak_aktif'] ?? '';
         if($keterangan_keaktifan === 'Lainnya') {
+            $keterangan_keaktifan = $_POST['ket_tidak_aktif_lainnya'] ?? '';
+        }
+    } else {
+        // Special active statuses: -, Cuti, Izin Belajar, etc.
+        $status_keaktifan = 'Aktif';
+        $keterangan_keaktifan = $status_keaktifan_raw;
+        if($status_keaktifan_raw === 'Lainnya') {
             $keterangan_keaktifan = $_POST['ket_tidak_aktif_lainnya'] ?? '';
         }
     }
@@ -79,12 +88,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if(trim($std) !== '') {
                 $tmt = !empty($_POST['tmt_status'][$i]) ? $_POST['tmt_status'][$i] : null;
                 $tgl_berhenti = !empty($_POST['tgl_berhenti_status'][$i]) ? $_POST['tgl_berhenti_status'][$i] : null;
+                $alasan = !empty($_POST['alasan_berhenti_status'][$i]) ? $_POST['alasan_berhenti_status'][$i] : null;
+                $alasan_lain = ($alasan === 'Dan Lainnya') ? ($_POST['alasan_lainnya_status'][$i] ?? '') : null;
+                
                 $filename = '';
                 if(!empty($_FILES['dok_status']['name'][$i])) {
                     $filename = 'uploads/'.time().'_status_'.basename($_FILES['dok_status']['name'][$i]);
                     move_uploaded_file($_FILES['dok_status']['tmp_name'][$i], $filename);
                 }
-                $status_list[] = ['status' => $std, 'tmt' => $tmt, 'tgl_berhenti' => $tgl_berhenti, 'dokumen' => $filename];
+                $status_list[] = [
+                    'status' => $std, 
+                    'tmt' => $tmt, 
+                    'tgl_berhenti' => $tgl_berhenti, 
+                    'alasan' => $alasan,
+                    'alasan_lainnya' => $alasan_lain,
+                    'dokumen' => $filename
+                ];
             }
         }
     }
@@ -149,12 +168,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     $homebase_prodi = $_POST['homebase_prodi'];
     $unit_kerja = $_POST['unit_kerja'];
-    $no_serdos = $_POST['no_serdos'] ?: null;
-    $dok_serdos = '';
-    if(!empty($_FILES['dok_serdos']['name'])) {
-        $dok_serdos = 'uploads/'.time().'_'.basename($_FILES['dok_serdos']['name']);
-        move_uploaded_file($_FILES['dok_serdos']['tmp_name'], $dok_serdos);
+    
+    $serdos_list = [];
+    if(!empty($_POST['no_serdos'])) {
+        foreach($_POST['no_serdos'] as $i => $no) {
+            if(trim($no) !== '') {
+                $tmt = !empty($_POST['tmt_serdos'][$i]) ? $_POST['tmt_serdos'][$i] : null;
+                $filename = '';
+                if(!empty($_FILES['dok_serdos']['name'][$i])) {
+                    $filename = 'uploads/'.time().'_serdos_'.basename($_FILES['dok_serdos']['name'][$i]);
+                    move_uploaded_file($_FILES['dok_serdos']['tmp_name'][$i], $filename);
+                }
+                $serdos_list[] = ['no' => $no, 'tmt' => $tmt, 'dokumen' => $filename];
+            }
+        }
     }
+
+    $no_serdos = $serdos_list[0]['no'] ?? null;
+    $tmt_serdos = $serdos_list[0]['tmt'] ?? null;
+    $dok_serdos = $serdos_list[0]['dokumen'] ?? '';
     $pendidikan_list = [];
     if (!empty($_POST['pend_jenjang'])) {
         foreach ($_POST['pend_jenjang'] as $i => $jenjang) {
@@ -186,16 +218,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         jabfung_akademik, tmt_jabfung, dok_jabfung,
         gol_lldikti, tmt_gol_lldikti, dok_gol_lldikti,
         gol_yayasan, tmt_gol_yayasan, dok_gol_yayasan,
-        homebase_prodi, unit_kerja, no_serdos, dok_serdos, riwayat_pendidikan, foto_profil, status_keaktifan, keterangan_keaktifan, tgl_mulai_tidak_bekerja
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        homebase_prodi, unit_kerja, no_serdos, tmt_serdos, dok_serdos, riwayat_pendidikan, foto_profil, status_keaktifan, keterangan_keaktifan, tgl_mulai_tidak_bekerja
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sssssssssssssssssssssssssssssssssss", 
+    $stmt->bind_param("ssssssssssssssssssssssssssssssssssss", 
         $nama, $alamat, $ttl_tempat, $ttl_tanggal, $nip, $nidn, $nuptk, $status_dosen, $status_pribadi, $dok_ktp, $dok_kk, $jenis_dosen, $jabatan_struktural, $tmk, $tmtk, $ket_tidak_kerja, $dok_tidak_kerja,
         $jabfung_akademik, $tmt_jabfung, $dok_jabfung,
         $gol_lldikti, $tmt_gol_lldikti, $dok_gol_lldikti,
         $gol_yayasan, $tmt_gol_yayasan, $dok_gol_yayasan,
-        $homebase_prodi, $unit_kerja, $no_serdos, $dok_serdos, $riwayat_pendidikan, $foto_profil, $status_keaktifan, $keterangan_keaktifan, $tgl_mulai_tidak_bekerja
+        $homebase_prodi, $unit_kerja, $no_serdos, $tmt_serdos, $dok_serdos, $riwayat_pendidikan, $foto_profil, $status_keaktifan, $keterangan_keaktifan, $tgl_mulai_tidak_bekerja
     );
     $stmt->execute();
     $last_dosen_id = $conn->insert_id;
@@ -245,8 +277,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     
     foreach ($status_list as $stt) {
-        $st = $conn->prepare("INSERT INTO status_dosen_riwayat (dosen_id, status_dosen, tmt, tgl_berhenti, dokumen) VALUES (?, ?, ?, ?, ?)");
-        $st->bind_param("issss", $last_dosen_id, $stt['status'], $stt['tmt'], $stt['tgl_berhenti'], $stt['dokumen']);
+        $st = $conn->prepare("INSERT INTO status_dosen_riwayat (dosen_id, status_dosen, tmt, tgl_berhenti, alasan, alasan_lainnya, dokumen) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $st->bind_param("issssss", $last_dosen_id, $stt['status'], $stt['tmt'], $stt['tgl_berhenti'], $stt['alasan'], $stt['alasan_lainnya'], $stt['dokumen']);
         $st->execute();
         $st->close();
     }
@@ -269,14 +301,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $st->execute();
         $st->close();
     }
+    foreach ($serdos_list as $sd) {
+        $st = $conn->prepare("INSERT INTO sertifikasi_dosen (dosen_id, no_serdos, tmt, dokumen) VALUES (?, ?, ?, ?)");
+        $st->bind_param("isss", $last_dosen_id, $sd['no'], $sd['tmt'], $sd['dokumen']);
+        $st->execute();
+        $st->close();
+    }
 
     echo "<script>alert('Data dosen berhasil disimpan!');location='daftar_dosen.php';</script>"; 
     exit;
 }
 
+$current_page = 'dosen_tambah';
 $breadcrumbs = [
     ['label' => 'Dosen', 'url' => 'daftar_dosen.php'],
-    ['label' => 'Tambah', 'url' => '#']
+    ['label' => 'Tambah Baru', 'url' => '#']
 ];
 ?>
 
@@ -285,32 +324,103 @@ $breadcrumbs = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Input Data Dosen | UNSERA</title>
-    <link rel="stylesheet" href="style.css?v=4">
+    <title>Tambah Dosen | Kepegawaian UNSERA</title>
+    <link rel="stylesheet" href="style.css?v=<?= time() ?>">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        .form-section { margin-bottom: 40px; }
-        .form-section h3 { 
-            padding-bottom: 15px; 
-            border-bottom: 2px solid #e2e8f0; 
-            margin-bottom: 25px; 
-            color: var(--primary);
-            font-size: 1.1rem;
+        :root {
+            --bs-primary: #2563eb;
+            --bs-primary-rgb: 37, 99, 235;
+        }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
+        .form-label { font-weight: 600; color: #475569; font-size: 0.9rem; margin-bottom: 0.5rem; }
+        .form-control, .form-select { 
+            border-radius: 10px; 
+            padding: 0.6rem 1rem; 
+            border: 1.5px solid #e2e8f0; 
+            transition: all 0.2s;
+        }
+        .form-control:focus, .form-select:focus { 
+            border-color: var(--bs-primary); 
+            box-shadow: 0 0 0 4px rgba(var(--bs-primary-rgb), 0.1); 
+        }
+        .card { border: none; border-radius: 20px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); overflow: hidden; }
+        .nav-tabs { border: none; background: #f1f5f9; padding: 6px; border-radius: 14px; display: inline-flex; }
+        .nav-tabs .nav-link { 
+            border: none; 
+            border-radius: 10px; 
+            color: #64748b; 
+            font-weight: 600; 
+            padding: 10px 20px; 
+            transition: all 0.3s;
+        }
+        .nav-tabs .nav-link.active { 
+            background: white; 
+            color: var(--bs-primary); 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
+        }
+        .section-title { 
+            font-family: 'Outfit', sans-serif; 
+            font-weight: 700; 
+            color: #0f172a; 
+            font-size: 1.25rem; 
+            margin-bottom: 1.5rem;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
-        .multi-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-        .dynamic-item {
-            background: #f8fafc;
+        .section-title i { color: var(--bs-primary); }
+        .dynamic-item { 
+            background: #f8fafc; 
+            border: 1px solid #e2e8f0; 
+            border-radius: 16px; 
+            padding: 20px; 
+            margin-bottom: 20px; 
+            position: relative; 
+            transition: all 0.2s;
+        }
+        .dynamic-item:hover { border-color: #cbd5e1; background: #f1f5f9; }
+        .btn-remove { 
+            position: absolute; 
+            top: 15px; 
+            right: 15px; 
+            background: #fee2e2; 
+            color: #ef4444; 
+            border: none; 
+            width: 32px; 
+            height: 32px; 
+            border-radius: 8px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .btn-remove:hover { background: #ef4444; color: white; }
+        .upload-placeholder {
+            border: 2px dashed #cbd5e1;
+            border-radius: 16px;
             padding: 20px;
-            border-radius: var(--radius-md);
-            margin-bottom: 20px;
-            border: 1px solid #e2e8f0;
-            position: relative;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
         }
+        .upload-placeholder:hover { border-color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), 0.05); }
         .hidden { display: none !important; }
+        
+        .sticky-save-bar {
+            position: sticky;
+            bottom: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 16px;
+            padding: 12px 24px;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+            margin-top: 40px;
+        }
     </style>
 </head>
 <body>
@@ -320,411 +430,439 @@ $breadcrumbs = [
 <div class="main-content">
     <?php include 'components/navbar.php'; ?>
 
-    <div class="header-section" style="margin-bottom: 35px;">
-        <div style="display: flex; justify-content: space-between; align-items: centre; flex-wrap: wrap; gap: 20px;">
+    <div class="container-fluid px-4 py-4">
+        <div class="d-flex justify-content-between align-items-end mb-4">
             <div>
-                <h1 style="font-size: 2rem; color: var(--text-main); font-weight: 800; letter-spacing: -1px;">Registrasi Dosen Baru</h1>
-                <p style="color: var(--text-muted); font-size: 1rem; margin-top: 4px;">Lengkapi data profesional dan personal dosen di bawah ini.</p>
+                <h1 class="h2 fw-bold text-dark mb-1">Registrasi Dosen Baru</h1>
+                <p class="text-muted mb-0">Lengkapi formulir pendaftaran di bawah untuk menambahkan dosen baru ke sistem.</p>
             </div>
-            <a href="daftar_dosen.php" class="btn btn-outline" style="height: fit-content; border-radius: 12px; font-weight: 700;">
-                <i class="fas fa-arrow-left"></i> Kembali ke Daftar
+            <a href="daftar_dosen.php" class="btn btn-outline-secondary rounded-pill px-4">
+                <i class="fas fa-arrow-left me-2"></i>Kembali
             </a>
         </div>
+
+        <form method="POST" enctype="multipart/form-data" id="formDosen" onsubmit="return confirm('Apakah Anda yakin ingin menyimpan data ini?')">
+            
+            <div class="card mb-4 border-0">
+                <div class="card-body p-4">
+                    <!-- Nav Tabs -->
+                    <ul class="nav nav-tabs mb-4" id="dosenTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="pribadi-tab" data-bs-toggle="tab" data-bs-target="#pribadi" type="button" role="tab"><i class="fas fa-user me-2"></i>Data Pribadi</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="kepegawaian-tab" data-bs-toggle="tab" data-bs-target="#kepegawaian" type="button" role="tab"><i class="fas fa-id-badge me-2"></i>Kepegawaian</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="kualifikasi-tab" data-bs-toggle="tab" data-bs-target="#kualifikasi" type="button" role="tab"><i class="fas fa-graduation-cap me-2"></i>Kualifikasi</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="lainnya-tab" data-bs-toggle="tab" data-bs-target="#lainnya" type="button" role="tab"><i class="fas fa-folder-open me-2"></i>Lainnya</button>
+                        </li>
+                    </ul>
+
+                    <!-- Tab Content -->
+                    <div class="tab-content" id="dosenTabsContent">
+                        
+                        <!-- TAB 1: DATA PRIBADI -->
+                        <div class="tab-pane fade show active" id="pribadi" role="tabpanel">
+                            <div class="row g-4">
+                                <div class="col-md-4">
+                                    <div class="text-center p-4 bg-light rounded-4 border">
+                                        <div class="mb-3">
+                                            <div id="photoPreview" class="bg-secondary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 150px; height: 150px; overflow: hidden; border: 4px solid white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                                                <i class="fas fa-user text-secondary" style="font-size: 5rem;"></i>
+                                            </div>
+                                        </div>
+                                        <label class="form-label d-block">Foto Profil Resmi</label>
+                                        <input type="file" name="foto_profil" class="form-control form-control-sm" accept="image/*" onchange="previewImage(this)">
+                                        <small class="text-muted d-block mt-2">JPG/PNG, Maks 2MB</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-8">
+                                    <h3 class="section-title"><i class="fas fa-id-card"></i>Identitas Diri</h3>
+                                    <div class="row g-3">
+                                        <div class="col-12">
+                                            <label class="form-label">Nama Lengkap & Gelar</label>
+                                            <input type="text" name="nama_lengkap" class="form-control" placeholder="Contoh: Dr. Ir. Budi Santoso, M.Kom" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Tempat Lahir</label>
+                                            <input type="text" name="ttl_tempat" class="form-control" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Tanggal Lahir</label>
+                                            <input type="date" name="ttl_tanggal" class="form-control" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Status Pernikahan</label>
+                                            <select name="status_pribadi" class="form-select" required>
+                                                <option value="">- Pilih Status -</option>
+                                                <option value="Menikah">Menikah</option>
+                                                <option value="Belum Menikah">Belum Menikah</option>
+                                                <option value="Bercerai">Bercerai</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Alamat Sesuai KTP</label>
+                                            <textarea name="alamat" class="form-control" rows="2" required></textarea>
+                                        </div>
+                                    </div>
+
+                                    <hr class="my-4">
+
+                                    <h3 class="section-title"><i class="fas fa-fingerprint"></i>Nomor Identitas</h3>
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label">NIP</label>
+                                            <input type="text" name="nip" class="form-control" id="inp_nip" placeholder="Masukkan NIP">
+                                            <div id="warn_nip" class="text-danger small mt-1 fw-bold" style="display:none;"></div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">NIDN</label>
+                                            <input type="text" name="nidn" class="form-control" id="inp_nidn" placeholder="Masukkan NIDN">
+                                            <div id="warn_nidn" class="text-danger small mt-1 fw-bold" style="display:none;"></div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">NUPTK</label>
+                                            <input type="text" name="nuptk" class="form-control" id="inp_nuptk" placeholder="Masukkan NUPTK">
+                                            <div id="warn_nuptk" class="text-danger small mt-1 fw-bold" style="display:none;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB 2: KEPEGAWAIAN -->
+                        <div class="tab-pane fade" id="kepegawaian" role="tabpanel">
+                            <div class="row g-4">
+                                <div class="col-md-6">
+                                    <h3 class="section-title"><i class="fas fa-briefcase"></i>Status Kepegawaian</h3>
+                                    <div id="status-wrapper">
+                                        <div class="dynamic-item">
+                                            <div class="row g-3">
+                                                <div class="col-12">
+                                                    <label class="form-label">Status Dosen</label>
+                                                    <select name="status_dosen[]" class="form-select" required>
+                                                        <option value="">- Pilih Status -</option>
+                                                        <option value="Tetap">Tetap</option>
+                                                        <option value="Tidak Tetap">Tidak Tetap</option>
+                                                        <option value="Homebase">Homebase</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">TMT Status</label>
+                                                    <input type="date" name="tmt_status[]" class="form-control">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Upload SK Status</label>
+                                                    <input type="file" name="dok_status[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="addStatusDosen()" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                                        <i class="fas fa-plus me-1"></i>Tambah Riwayat Status
+                                    </button>
+
+                                    <div class="mt-5 p-4 bg-light rounded-4">
+                                        <h3 class="section-title mb-3"><i class="fas fa-map-marker-alt"></i>Homebase & Unit</h3>
+                                        <div class="row g-3">
+                                                <div class="col-md-10">
+                                                    <label class="form-label">Program Studi (Homebase)</label>
+                                                    <select name="homebase_prodi" class="form-select" id="select_homebase" required>
+                                                        <option value="">- Pilih Prodi -</option>
+                                                        <option value="S1 Teknik Informatika">S1 Teknik Informatika</option>
+                                                        <option value="S1 Sistem Informasi">S1 Sistem Informasi</option>
+                                                        <option value="S1 Akuntansi">S1 Akuntansi</option>
+                                                        <option value="S1 Manajemen">S1 Manajemen</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-2 d-flex align-items-end">
+                                                    <button type="button" onclick="addNewItem('select_homebase', 'Program Studi')" class="btn btn-outline-primary w-100 rounded-10"><i class="fas fa-plus"></i></button>
+                                                </div>
+                                            </div>
+                                            <div class="row g-3 mt-1">
+                                                <div class="col-md-10">
+                                                    <label class="form-label">Fakultas / Unit Kerja</label>
+                                                    <select name="unit_kerja" class="form-select" id="select_unit" required>
+                                                        <option value="">- Pilih Unit Kerja -</option>
+                                                        <option value="Fakultas Teknologi Informasi">Fakultas Teknologi Informasi</option>
+                                                        <option value="Fakultas Ekonomi & Bisnis">Fakultas Ekonomi & Bisnis</option>
+                                                        <option value="Fakultas Teknik">Fakultas Teknik</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-2 d-flex align-items-end">
+                                                    <button type="button" onclick="addNewItem('select_unit', 'Unit Kerja')" class="btn btn-outline-primary w-100 rounded-10"><i class="fas fa-plus"></i></button>
+                                                </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <h3 class="section-title"><i class="fas fa-award"></i>Jabatan & Pangkat</h3>
+                                    
+                                    <div class="p-4 bg-primary bg-opacity-10 rounded-4 border border-primary border-opacity-25 mb-4">
+                                        <label class="form-label d-block text-primary">Penugasan Struktural?</label>
+                                        <div class="d-flex gap-3 mt-2">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio" name="jenis_dosen" id="nonStruk" value="Non Struktural" checked>
+                                                <label class="form-check-label fw-bold" for="nonStruk">Non-Struktural</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio" name="jenis_dosen" id="struk" value="Struktural">
+                                                <label class="form-check-label fw-bold" for="struk">Struktural</label>
+                                            </div>
+                                        </div>
+
+                                        <div id="area_jabatan_struktural" class="mt-3 hidden pt-3 border-top border-primary border-opacity-25">
+                                            <div class="row g-3">
+                                                <div class="col-12">
+                                                    <label class="form-label">Nama Jabatan Struktural</label>
+                                                    <input type="text" name="jabatan_struktural" class="form-control" placeholder="Contoh: Dekan / Kaprodi">
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label">Tanggal Mulai (TMK)</label>
+                                                    <input type="date" name="tmk" class="form-control">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div id="jabfung-wrapper">
+                                        <div class="dynamic-item">
+                                            <label class="form-label">Jabatan Fungsional Terakhir</label>
+                                            <div class="row g-3">
+                                                <div class="col-12">
+                                                    <select name="jabfung_akademik[]" class="form-select">
+                                                        <option value="">- Pilih Jabatan Akademik -</option>
+                                                        <option value="Asisten Ahli">Asisten Ahli</option>
+                                                        <option value="Asisten Ahli">Asisten Ahli</option>
+                                                        <option value="Lektor">Lektor</option>
+                                                        <option value="Lektor Kepala">Lektor Kepala</option>
+                                                        <option value="Guru Besar">Guru Besar</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">TMT Jabfung</label>
+                                                    <input type="date" name="tmt_jabfung[]" class="form-control">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Upload SK</label>
+                                                    <input type="file" name="dok_jabfung[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="addJabfung()" class="btn btn-sm btn-outline-primary rounded-pill px-3 mb-4">
+                                        <i class="fas fa-plus me-1"></i>Tambah Riwayat Jabfung
+                                    </button>
+
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <div class="p-3 bg-light rounded-4">
+                                                <label class="form-label">Pangkat/Gol (DIKTI)</label>
+                                                <select name="gol_lldikti[]" class="form-select mb-2">
+                                                    <option value="">- Pilih -</option>
+                                                    <option value="III/a">III/a</option><option value="III/b">III/b</option>
+                                                    <option value="III/c">III/c</option><option value="III/d">III/d</option>
+                                                    <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option>
+                                                </select>
+                                                <input type="date" name="tmt_gol_lldikti[]" class="form-control form-control-sm mb-2" placeholder="TMT">
+                                                <input type="file" name="dok_gol_lldikti[]" class="form-control form-control-sm" accept=".pdf,.jpg,.png">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="p-3 bg-light rounded-4">
+                                                <label class="form-label">Golongan (Yayasan)</label>
+                                                <select name="gol_yayasan[]" class="form-select mb-2">
+                                                    <option value="">- Pilih -</option>
+                                                    <option value="III/a">III/a</option><option value="III/b">III/b</option>
+                                                    <option value="III/c">III/c</option><option value="III/d">III/d</option>
+                                                    <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option>
+                                                    <option value="IV/c">IV/c</option><option value="IV/d">IV/d</option>
+                                                    <option value="IV/e">IV/e</option>
+                                                </select>
+                                                <input type="date" name="tmt_gol_yayasan[]" class="form-control form-control-sm mb-2" placeholder="TMT">
+                                                <input type="file" name="dok_gol_yayasan[]" class="form-control form-control-sm" accept=".pdf,.jpg,.png">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB 3: KUALIFIKASI -->
+                        <div class="tab-pane fade" id="kualifikasi" role="tabpanel">
+                            <div class="row g-4">
+                                <div class="col-md-7">
+                                    <h3 class="section-title"><i class="fas fa-user-graduate"></i>Riwayat Pendidikan Tinggi</h3>
+                                    <div id="pendidikan-wrapper">
+                                        <div class="dynamic-item" style="border-left: 4px solid #10b981;">
+                                            <div class="row g-3">
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Jenjang</label>
+                                                    <select name="pend_jenjang[]" class="form-select" required>
+                                                        <option value="">- Pilih -</option>
+                                                        <option value="S1">S1</option>
+                                                        <option value="S2">S2</option>
+                                                        <option value="S3">S3</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-8">
+                                                    <label class="form-label">Institusi / Universitas</label>
+                                                    <input type="text" name="pend_institusi[]" class="form-control" placeholder="Contoh: Universitas Gadjah Mada" required>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">TMT Lulus (Bulan/Tahun)</label>
+                                                    <input type="date" name="pend_tahun[]" class="form-control" required>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Upload Ijazah/Transkrip</label>
+                                                    <input type="file" name="dok_pendidikan[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="addPendidikan()" class="btn btn-sm btn-outline-success rounded-pill px-3">
+                                        <i class="fas fa-plus me-1"></i>Tambah Riwayat Pendidikan
+                                    </button>
+                                </div>
+
+                                <div class="col-md-5">
+                                    <h3 class="section-title"><i class="fas fa-certificate"></i>Sertifikasi Dosen (Serdos)</h3>
+                                    <div class="p-4 bg-success bg-opacity-10 rounded-4 border border-success border-opacity-25 mb-4">
+                                        <div id="serdos-list-area">
+                                            <div class="mb-3">
+                                                <label class="form-label">Nomor Sertifikat</label>
+                                                <input type="text" name="no_serdos[]" class="form-control mb-3" placeholder="Masukkan nomor Serdos">
+                                                
+                                                <label class="form-label">TMT Sertifikasi</label>
+                                                <input type="date" name="tmt_serdos[]" class="form-control mb-3">
+                                                
+                                                <label class="form-label">Upload Dokumen Serdos</label>
+                                                <input type="file" name="dok_serdos[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+                                            </div>
+                                        </div>
+                                        <button type="button" onclick="addSerdos()" class="btn btn-sm btn-success rounded-pill w-100 mt-2">
+                                            <i class="fas fa-plus me-1"></i>Tambah Serdos Lain
+                                        </button>
+                                    </div>
+
+                                    <h3 class="section-title mt-5"><i class="fas fa-medal"></i>Penghargaan dan Sanksi</h3>
+                                    <div class="row g-3">
+                                        <div class="col-12">
+                                            <div id="reward-wrapper"></div>
+                                            <button type="button" onclick="addReward()" class="btn btn-sm btn-outline-warning w-100 rounded-pill mb-3">
+                                                <i class="fas fa-plus me-1"></i>Tambah Reward
+                                            </button>
+                                        </div>
+                                        <div class="col-12">
+                                            <div id="punishment-wrapper"></div>
+                                            <button type="button" onclick="addPunishment()" class="btn btn-sm btn-outline-danger w-100 rounded-pill">
+                                                <i class="fas fa-plus me-1"></i>Tambah Sanksi
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB 4: DOKUMEN & LAINNYA -->
+                        <div class="tab-pane fade" id="lainnya" role="tabpanel">
+                            <div class="row g-4">
+                                <div class="col-md-6">
+                                    <h3 class="section-title"><i class="fas fa-file-pdf"></i>Dokumen Identitas (Scan)</h3>
+                                    <div class="row g-3">
+                                        <div class="col-12">
+                                            <div class="upload-placeholder" onclick="document.querySelector('input[name=\'dok_ktp\']').click()">
+                                                <i class="fas fa-id-card fa-2x mb-2 text-primary"></i>
+                                                <p class="mb-1 fw-bold">Upload Scan KTP</p>
+                                                <p class="text-muted small mb-0">Format PDF/JPG/PNG. Pastikan teks terbaca jelas.</p>
+                                                <input type="file" name="dok_ktp" class="hidden" accept=".pdf,.jpg,.jpeg,.png">
+                                                <div id="ktp_name" class="mt-2 text-primary fw-bold small"></div>
+                                            </div>
+                                        </div>
+                                        <div class="col-12">
+                                            <div class="upload-placeholder" onclick="document.querySelector('input[name=\'dok_kk\']').click()">
+                                                <i class="fas fa-users fa-2x mb-2 text-primary"></i>
+                                                <p class="mb-1 fw-bold">Upload Scan Kartu Keluarga</p>
+                                                <p class="text-muted small mb-0">Pastikan seluruh halaman KK terlihat.</p>
+                                                <input type="file" name="dok_kk" class="hidden" accept=".pdf,.jpg,.jpeg,.png">
+                                                <div id="kk_name" class="mt-2 text-primary fw-bold small"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <h3 class="section-title text-danger"><i class="fas fa-user-slash"></i>Status Keaktifan</h3>
+                                    <div class="p-4 bg-danger bg-opacity-10 rounded-4 border border-danger border-opacity-25">
+                                        <div class="mb-4">
+                                            <label class="form-label d-block mb-2">Status Utama</label>
+                                            <div class="btn-group w-100" role="group">
+                                                <input type="radio" class="btn-check" name="status_utama" id="status_aktif" value="Aktif" checked onclick="toggleStatusKeaktifan('Aktif')">
+                                                <label class="btn btn-outline-success rounded-start-pill" for="status_aktif">Aktif</label>
+                                                
+                                                <input type="radio" class="btn-check" name="status_utama" id="status_tidak_aktif" value="Tidak Aktif" onclick="toggleStatusKeaktifan('Tidak Aktif')">
+                                                <label class="btn btn-outline-danger rounded-end-pill" for="status_tidak_aktif">Tidak Aktif</label>
+                                            </div>
+                                        </div>
+
+                                        <div id="wrapper_sub_status" class="mb-3">
+                                            <label class="form-label small">Sub-Pilihan Status</label>
+                                            <select name="status_keaktifan" id="select_sub_status" class="form-select" onchange="handleSubStatus(this)">
+                                                <option value="-">Aktif Normal</option>
+                                                <option value="Cuti">Cuti</option>
+                                                <option value="Izin Belajar">Izin Belajar</option>
+                                                <option value="Tugas Belajar">Tugas Belajar</option>
+                                                <option value="Lainnya">Lainnya</option>
+                                            </select>
+                                        </div>
+
+                                        <div id="wrapper_keaktifan_lainnya" class="hidden mb-3">
+                                            <label class="form-label text-danger small">Keterangan Lainnya</label>
+                                            <input type="text" name="ket_tidak_aktif_lainnya" class="form-control" placeholder="Jelaskan status...">
+                                        </div>
+
+                                        <div id="area_keaktifan_details" class="pt-3 border-top border-danger border-opacity-25">
+                                            <div class="mb-3">
+                                                <label class="form-label text-danger small">TMT Status (Terhitung Mulai Tanggal)</label>
+                                                <input type="date" name="tgl_mulai_tidak_bekerja" class="form-control" required>
+                                            </div>
+                                            <div>
+                                                <label class="form-label text-danger small">Upload Dokumen Pendukung (Wajib)</label>
+                                                <input type="file" name="dok_tidak_kerja" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sticky Save Bar -->
+            <div class="sticky-save-bar d-flex justify-content-between align-items-center">
+                <div class="text-muted small d-none d-md-block">
+                    <i class="fas fa-info-circle me-1"></i>Pastikan data telah diperiksa dengan benar sebelum menyimpan.
+                </div>
+                <div class="d-flex gap-3">
+                    <button type="button" onclick="location.href='daftar_dosen.php'" class="btn btn-light rounded-pill px-4 fw-bold">Batal</button>
+                    <button type="submit" class="btn btn-primary rounded-pill px-5 fw-bold shadow-sm">
+                        <i class="fas fa-save me-2"></i>Simpan Data Dosen
+                    </button>
+                </div>
+            </div>
+
+        </form>
     </div>
-
-    <form method="POST" enctype="multipart/form-data" style="max-width: 1100px; margin: 0 auto;">
-
-        <!-- Profil Picture Section -->
-        <div class="card" style="display: flex; align-items: center; gap: 30px; padding: 30px;">
-            <div style="width: 120px; height: 120px; background: #f1f5f9; border-radius: 24px; display: flex; align-items: center; justify-content: center; border: 2px dashed #cbd5e1; flex-shrink: 0;">
-                <i class="fas fa-user" style="font-size: 3rem; color: #94a3b8;"></i>
-            </div>
-            <div style="flex: 1;">
-                <h3 style="margin-bottom: 8px; border: none; padding: 0;"><i class="fas fa-camera" style="color: var(--primary);"></i> Foto Profil Resmi</h3>
-                <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 15px;">Unggah foto formal dengan latar belakang solid. Format JPG/PNG, Maks 2MB.</p>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <input type="file" name="foto_profil" accept=".jpg,.jpeg,.png" style="max-width: 400px; border-style: solid; border-width: 1.5px; background: white;">
-                </div>
-            </div>
-        </div>
-
-        <!-- SECTION 1: Informasi Pribadi -->
-        <div class="card">
-            <h3><i class="fas fa-user-circle"></i> Data Identitas Dosen</h3>
-            <div class="form-group">
-                <label>Nama Lengkap (beserta gelar akademik)</label>
-                <input type="text" name="nama_lengkap" placeholder="Contoh: Dr. Budi Santoso, M.Kom" style="font-size: 1.1rem; font-weight: 600;" required>
-            </div>
-            
-            <div class="multi-row" style="margin-top: 20px;">
-                <div class="form-group">
-                    <label>Tempat Lahir</label>
-                    <input type="text" name="ttl_tempat" placeholder="Kota Kelahiran" required>
-                </div>
-                <div class="form-group">
-                    <label>Tanggal Lahir</label>
-                    <input type="date" name="ttl_tanggal" required>
-                </div>
-            </div>
-
-            <div class="form-group" style="margin-top: 20px;">
-                <label>Alamat Tinggal Sesuai KTP</label>
-                <textarea name="alamat" rows="3" placeholder="Tuliskan alamat lengkap..." required></textarea>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 25px; padding-top: 25px; border-top: 1px solid #f1f5f9;">
-                <div class="form-group">
-                    <label>Nomor Induk Pegawai (NIP)</label>
-                    <input type="text" name="nip" id="inp_nip" placeholder="Masukkan NIP...">
-                    <small id="warn_nip" style="color:var(--danger); display:none; margin-top:6px; font-weight: 600;"><i class="fas fa-exclamation-triangle"></i> Terdaftar!</small>
-                </div>
-                <div class="form-group">
-                    <label>Nomor Induk Dosen (NIDN)</label>
-                    <input type="text" name="nidn" id="inp_nidn" placeholder="Masukkan NIDN...">
-                    <small id="warn_nidn" style="color:var(--danger); display:none; margin-top:6px; font-weight: 600;"><i class="fas fa-exclamation-triangle"></i> Terdaftar!</small>
-                </div>
-                <div class="form-group">
-                    <label>Nomor Unik (NUPTK)</label>
-                    <input type="text" name="nuptk" id="inp_nuptk" placeholder="Masukkan NUPTK...">
-                    <small id="warn_nuptk" style="color:var(--danger); display:none; margin-top:6px; font-weight: 600;"><i class="fas fa-exclamation-triangle"></i> Terdaftar!</small>
-                </div>
-            </div>
-
-            <div class="form-group" style="margin-top: 25px;">
-                <label>Status Pernikahan</label>
-                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                    <?php foreach(['Menikah', 'Belum Menikah', 'Bercerai'] as $stat): ?>
-                        <label class="radio-label" style="background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 10px 20px; border-radius: 12px; transition: all 0.2s; flex: 1; text-align: center; justify-content: center;">
-                            <input type="radio" name="status_pribadi" value="<?= $stat ?>" required style="margin-right: 8px;"> <?= $stat ?>
-                        </label>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-
-            <div class="multi-row" style="margin-top: 30px; background: #f0f9ff; padding: 25px; border-radius: 18px; border: 1px solid #bae6fd;">
-                <div class="form-group">
-                    <label><i class="fas fa-id-card" style="color: #0369a1;"></i> Dokumen KTP (PDF/JPG)</label>
-                    <input type="file" name="dok_ktp" accept=".pdf,.jpg,.jpeg,.png" style="background: white;">
-                    <p style="margin-top: 8px; font-size: 0.75rem; color: #0369a1; font-weight: 500;">Pindai KTP asli yang masih berlaku.</p>
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-users" style="color: #0369a1;"></i> Dokumen Kartu Keluarga</label>
-                    <input type="file" name="dok_kk" accept=".pdf,.jpg,.jpeg,.png" style="background: white;">
-                    <p style="margin-top: 8px; font-size: 0.75rem; color: #0369a1; font-weight: 500;">Pindai seluruh halaman KK.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- SECTION 2: Status Kepegawaian -->
-        <div class="card">
-            <h3><i class="fas fa-briefcase"></i> Status Kepegawaian</h3>
-
-            <div id="status-wrapper">
-                <div class="dynamic-item" style="border-left: 4px solid var(--primary); background: #ffffff;">
-                    <button type="button" class="btn-icon" style="position: absolute; right: 15px; top: 15px; color: #94a3b8;"><i class="fas fa-info-circle"></i></button>
-                    <div class="form-group">
-                        <label>Status Dosen</label>
-                        <select name="status_dosen[]" required style="font-weight: 600;">
-                            <option value="">- Pilih Status Dosen -</option>
-                            <option value="Tetap">Tetap</option>
-                            <option value="Tidak Tetap">Tidak Tetap</option>
-                            <option value="Homebase">Homebase</option>
-                        </select>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top:20px;">
-                        <div class="form-group">
-                            <label>Terhitung Mulai Bekerja</label>
-                            <input type="date" name="tmt_status[]">
-                        </div>
-                        <div class="form-group">
-                            <label>Tanggal Berhenti <span style="color:var(--text-muted); font-weight:400;">(Jika Ada)</span></label>
-                            <input type="date" name="tgl_berhenti_status[]">
-                        </div>
-                        <div class="form-group">
-                            <label>SK Status Kepegawaian</label>
-                            <input type="file" name="dok_status[]" accept=".pdf,.jpg,.png" style="background: #f8fafc;">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <button type="button" onclick="addStatusDosen()" class="btn btn-outline" style="width:100%; margin-bottom: 25px; border-style: dashed; border-width: 2px;">
-                <i class="fas fa-history"></i> Tambah Riwayat Status Kepegawaian
-            </button>
-
-            <div class="multi-row" style="margin-bottom:25px; padding: 25px; background: #f8fafc; border-radius: 18px; border: 1px solid #e2e8f0;">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label>Program Studi (Homebase)</label>
-                    <input type="text" name="homebase_prodi" placeholder="Contoh: S1 Teknik Informatika" required>
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label>Fakultas / Unit Kerja</label>
-                    <input type="text" name="unit_kerja" placeholder="Contoh: Fakultas Teknik" required>
-                </div>
-            </div>
-
-            <!-- Status Keaktifan Section (Newly Highlighted) -->
-            <div style="background: #fff1f2; border: 1.5px solid #fee2e2; border-radius: 20px; padding: 30px; margin-bottom: 25px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
-                    <div>
-                        <h4 style="margin: 0; font-size: 1rem; color: #e11d48; font-weight: 800; text-transform: uppercase;">Status Keaktifan Saat Ini</h4>
-                        <p style="margin-top: 5px; font-size: 0.8rem; color: #f43f5e; font-weight: 500;">Pilih jika dosen sudah tidak aktif atau dalam masa cuti/tugas belajar.</p>
-                    </div>
-                    <div style="display:flex; gap:15px;">
-                        <label class="radio-label" style="background: white; border: 1px solid #fee2e2; padding: 10px 20px; border-radius: 12px; font-weight: 700;">
-                            <input type="radio" name="status_keaktifan" value="Aktif" onclick="toggleKeaktifan(this)" checked style="margin-right: 8px;"> AKTIF
-                        </label>
-                        <label class="radio-label" style="background: white; border: 1px solid #fee2e2; padding: 10px 20px; border-radius: 12px; font-weight: 700;">
-                            <input type="radio" name="status_keaktifan" value="Tidak Aktif" onclick="toggleKeaktifan(this)" style="margin-right: 8px;"> TIDAK AKTIF
-                        </label>
-                    </div>
-                </div>
-
-                <div id="area_keaktifan_details" class="hidden" style="margin-top: 25px; padding-top: 25px; border-top: 1px dashed #fecaca;">
-                    <div class="multi-row">
-                        <div class="form-group">
-                            <label style="color: #e11d48;">Tanggal Mulai Tidak Bekerja</label>
-                            <input type="date" name="tgl_mulai_tidak_bekerja" style="background: white; font-weight: 700; border-color: #fecaca;">
-                        </div>
-                        <div class="form-group">
-                            <label style="color: #e11d48;">Unggah Dokumen Pendukung (PDF)</label>
-                            <input type="file" name="dok_tidak_kerja" accept=".pdf,.jpg,.png" style="background: white; border-color: #fecaca;">
-                        </div>
-                    </div>
-                    <div class="form-group" style="margin-top:20px;">
-                        <label style="color: #e11d48;">Alasan / Keterangan Detail</label>
-                        <div style="display:flex; gap:15px; margin-top:10px; flex-wrap:wrap;">
-                            <?php foreach(['Cuti', 'Izin Belajar', 'Tugas Belajar', 'Resign', 'Pensiun', 'Lainnya'] as $ket): ?>
-                            <label class="radio-label" style="background: white; border: 1px solid #fee2e2; padding: 8px 16px; border-radius: 10px; font-size: 0.85rem; font-weight: 600;">
-                                <input type="radio" name="ket_tidak_aktif" value="<?= $ket ?>" onclick="toggleKeaktifanLainnya(this)" style="margin-right:6px;"> <?= $ket ?>
-                            </label>
-                            <?php endforeach; ?>
-                        </div>
-                        <div id="area_tidak_aktif_lainnya" class="hidden" style="margin-top:15px;">
-                            <input type="text" name="ket_tidak_aktif_lainnya" placeholder="Tuliskan alasan lainnya di sini..." style="background: white; border-color: #fecaca;">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Jabatan Dosen -->
-            <div id="area_jenis_penugasan" style="background: linear-gradient(135deg, #eff6ff 0%, #e0f2fe 100%); border: 1.5px solid #bae6fd; border-radius: 20px; padding: 30px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-                    <h4 style="margin: 0; font-size: 1rem; color: #0369a1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Jabatan Dosen</h4>
-                    <div style="display:flex; gap:12px;">
-                        <label class="radio-label" style="background: white; padding: 8px 16px; border-radius: 10px; border: 1px solid #bae6fd; font-weight: 600;">
-                            <input type="radio" name="jenis_dosen" value="Struktural" style="margin-right:8px;"> Struktural
-                        </label>
-                        <label class="radio-label" style="background: white; padding: 8px 16px; border-radius: 10px; border: 1px solid #bae6fd; font-weight: 600;">
-                            <input type="radio" name="jenis_dosen" value="Non Struktural" checked style="margin-right:8px;"> Non Struktural
-                        </label>
-                    </div>
-                </div>
-
-                <div id="area_jabatan_struktural" class="hidden" style="margin-top: 20px; padding-top: 20px; border-top: 1px dashed #bae6fd;">
-                    <div class="form-group">
-                        <label style="color: #0369a1;">Nama Jabatan Struktural</label>
-                        <input type="text" name="jabatan_struktural" placeholder="Contoh: Ketua Program Studi" style="background: white;">
-                    </div>
-                    <div class="multi-row" style="margin-top: 20px;">
-                        <div class="form-group">
-                            <label style="color: #0369a1;">TMT Bertugas (TMBT)</label>
-                            <input type="date" name="tmk" style="background: white;">
-                        </div>
-                        <div class="form-group">
-                            <label style="color: #0369a1;">SK Penugasan</label>
-                            <input type="file" name="dok_penugasan_struktural" accept=".pdf,.jpg,.png" style="background: white;">
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- SECTION 3: Jabatan Akademik Dosen -->
-        <div class="card" style="margin-bottom: 20px;">
-            <h3><i class="fas fa-award"></i> Jabatan Akademik Dosen</h3>
-            <div id="jabfung-wrapper">
-                <div class="dynamic-item">
-                    <div class="form-group">
-                        <label>Jabatan Akademik Dosen</label>
-                        <select name="jabfung_akademik[]">
-                            <option value="">- Pilih Jabatan Akademik -</option>
-                            <option value="Asisten Ahli">Asisten Ahli</option>
-                            <option value="Lektor">Lektor</option>
-                            <option value="Lektor Kepala">Lektor Kepala</option>
-                            <option value="Guru Besar">Guru Besar</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="margin-top:12px;">
-                        <label style="font-size:0.8rem">TMT Jabfung <span style="color:var(--text-muted);">(Tanggal Mulai Berlaku)</span></label>
-                        <input type="date" name="tmt_jabfung[]">
-                        <small style="color:var(--text-muted); font-size:0.75rem; margin-top:4px; display:block;">Pilih tanggal surat keputusan jabatan fungsional mulai berlaku.</small>
-                    </div>
-                    <div class="form-group" style="margin-top:12px;">
-                        <label>Keterangan</label>
-                        <input type="text" name="ket_jabfung[]" placeholder="Keterangan tambahan (opsional)">
-                    </div>
-                    <div class="form-group" style="margin-top:12px;">
-                        <label style="font-size:0.8rem">Upload SK Jabfung <span style="color:var(--text-muted);">(PDF/JPG)</span></label>
-                        <input type="file" name="dok_jabfung[]" accept=".pdf,.jpg,.png">
-                    </div>
-                </div>
-            </div>
-            <button type="button" onclick="addJabfung()" class="btn btn-outline" style="width:100%; font-size: 0.8rem; padding: 6px;"><i class="fas fa-plus"></i> Tambah</button>
-        </div>
-
-        <!-- Row for DIKTI and Yayasan -->
-        <div class="multi-row" style="margin-bottom: 20px;">
-            <!-- SECTION 4: Pangkat/Golongan Sesuai DIKTI -->
-            <div class="card" style="margin-bottom: 0;">
-                <h3><i class="fas fa-university"></i> Pangkat/Golongan Sesuai DIKTI</h3>
-                <div id="lldikti-wrapper">
-                    <div class="dynamic-item">
-                        <div class="form-group">
-                            <select name="gol_lldikti[]">
-                                <option value="">- Pilih Golongan -</option>
-                                <option value="III/a">III/a</option>
-                                <option value="III/b">III/b</option>
-                                <option value="III/c">III/c</option>
-                                <option value="III/d">III/d</option>
-                                <option value="IV/a">IV/a</option>
-                                <option value="IV/b">IV/b</option>
-                                <option value="IV/c">IV/c</option>
-                                <option value="IV/d">IV/d</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="margin-top:12px;">
-                            <label style="font-size: 0.8rem;">TMT</label>
-                            <input type="date" name="tmt_gol_lldikti[]">
-                        </div>
-                        <div class="form-group" style="margin-top:12px;">
-                            <label style="font-size: 0.8rem;">Upload SK</label>
-                            <input type="file" name="dok_gol_lldikti[]" accept=".pdf,.jpg,.png">
-                        </div>
-                    </div>
-                </div>
-                <button type="button" onclick="addLldikti()" class="btn btn-outline" style="width:100%; font-size: 0.8rem; padding: 6px;"><i class="fas fa-plus"></i> Tambah</button>
-            </div>
-
-            <!-- SECTION 5: Golongan Yayasan -->
-            <div class="card" style="margin-bottom: 0;">
-                <h3><i class="fas fa-building"></i> Golongan Yayasan</h3>
-                <div id="yayasan-wrapper">
-                    <div class="dynamic-item">
-                        <div class="form-group">
-                            <select name="gol_yayasan[]">
-                                <option value="">- Pilih Golongan -</option>
-                                <option value="III/a">III/a</option>
-                                <option value="III/b">III/b</option>
-                                <option value="III/c">III/c</option>
-                                <option value="III/d">III/d</option>
-                                <option value="IV/a">IV/a</option>
-                                <option value="IV/b">IV/b</option>
-                                <option value="IV/c">IV/c</option>
-                                <option value="IV/d">IV/d</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="margin-top:12px;">
-                            <label style="font-size: 0.8rem;">TMT</label>
-                            <input type="date" name="tmt_gol_yayasan[]">
-                        </div>
-                        <div class="form-group" style="margin-top:12px;">
-                            <label style="font-size: 0.8rem;">Upload SK</label>
-                            <input type="file" name="dok_gol_yayasan[]" accept=".pdf,.jpg,.png">
-                        </div>
-                    </div>
-                </div>
-                <button type="button" onclick="addYayasan()" class="btn btn-outline" style="width:100%; font-size: 0.8rem; padding: 6px;"><i class="fas fa-plus"></i> Tambah</button>
-            </div>
-        </div>
-
-        <!-- SECTION 6: Pendidikan & Sertifikasi -->
-        <div class="card">
-            <h3><i class="fas fa-graduation-cap"></i> Kualifikasi Pendidikan & Sertifikasi</h3>
-            <div id="pendidikan-wrapper">
-                <div class="dynamic-item" style="border-left: 4px solid var(--success); background: #ffffff;">
-                    <div class="multi-row">
-                        <div class="form-group">
-                            <label>Jenjang / Tingkat</label>
-                            <select name="pend_jenjang[]" required style="font-weight: 600;">
-                                <option value="">- Pilih Jenjang -</option>
-                                <?php foreach(['S1', 'S2', 'S3'] as $p): ?>
-                                <option value="<?= $p ?>"><?= $p ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Nama Institusi / Universitas</label>
-                            <input type="text" name="pend_institusi[]" placeholder="Contoh: Universitas Indonesia" required>
-                        </div>
-                    </div>
-                    <div class="multi-row" style="margin-top:20px;">
-                        <div class="form-group">
-                            <label>Tahun Lulus</label>
-                            <input type="number" name="pend_tahun[]" min="1950" max="2100" placeholder="YYYY" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Upload Ijazah & Transkrip</label>
-                            <input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png" style="background: #f8fafc;">
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <button type="button" onclick="addPendidikan()" class="btn btn-outline" style="width:100%; margin-bottom: 30px; border-style: dashed; border-width: 2px; color: var(--success); border-color: rgba(16, 185, 129, 0.3);">
-                <i class="fas fa-plus"></i> Tambah Riwayat Pendidikan
-            </button>
-
-            <div style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 20px; padding: 25px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
-                    <h4 style="margin:0; font-size: 0.9rem; color: #15803d; font-weight: 800; text-transform: uppercase;">Sertifikasi Dosen (Serdos)</h4>
-                    <div style="display: flex; gap: 15px;">
-                        <label class="radio-label" style="background: white; padding: 6px 16px; border-radius: 8px; border: 1px solid #bbf7d0;">
-                            <input type="radio" name="is_serdos" value="Ya" onclick="document.getElementById('area_serdos').style.display='grid'"> Ya
-                        </label>
-                        <label class="radio-label" style="background: white; padding: 6px 16px; border-radius: 8px; border: 1px solid #bbf7d0;">
-                            <input type="radio" name="is_serdos" value="Tidak" onclick="document.getElementById('area_serdos').style.display='none'" checked> Tidak
-                        </label>
-                    </div>
-                </div>
-                
-                <div id="area_serdos" class="multi-row" style="display:none; margin-top: 20px; padding-top: 20px; border-top: 1px dashed #bbf7d0;">
-                    <div class="form-group" style="margin-bottom:0;">
-                        <label style="color: #15803d;">Nomor Sertifikat</label>
-                        <input type="text" name="no_serdos" placeholder="Masukkan 10-14 digit nomor..." style="background: white;">
-                    </div>
-                    <div class="form-group" style="margin-bottom:0;">
-                        <label style="color: #15803d;">Upload Sertifikat Resmi</label>
-                        <input type="file" name="dok_serdos" accept=".pdf,.jpg,.png" style="background: white;">
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- SECTION 7: Penghargaan & Sanksi -->
-        <div class="multi-row" style="margin-bottom:20px;">
-            <div class="card">
-                <h3><i class="fas fa-medal" style="color:#d97706;"></i> Penghargaan (Reward)</h3>
-                <div id="reward-wrapper"></div>
-                <button type="button" onclick="addReward()" class="btn btn-outline" style="width:100%; margin-top:10px;"><i class="fas fa-plus"></i> Tambah Reward</button>
-            </div>
-            <div class="card">
-                <h3><i class="fas fa-gavel" style="color:#dc2626;"></i> Sanksi (Punishment)</h3>
-                <div id="punishment-wrapper"></div>
-                <button type="button" onclick="addPunishment()" class="btn btn-outline" style="width:100%; margin-top:10px;"><i class="fas fa-plus"></i> Tambah Sanksi</button>
-            </div>
-        </div>
-
-        <!-- SECTION 8: Status Keaktifan (Removed from bottom, moved to employment section) -->
-
-        <div class="card" style="display:flex; justify-content:flex-end; gap:12px; align-items:center;">
-            <a href="daftar_dosen.php" class="btn btn-outline"><i class="fas fa-arrow-left"></i> Batal</a>
-            <button type="submit" class="btn btn-primary" style="padding:12px 36px;"><i class="fas fa-save"></i> Simpan Data Dosen</button>
-        </div>
-    </form>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-let hasBeenStruktural = false;
 let isDuplicate = false;
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -738,16 +876,18 @@ document.addEventListener("DOMContentLoaded", function() {
             document.getElementById(warnId).style.display = 'none';
             return false;
         }
-        let res = await fetch(`check_duplicate.php?type=${type}&value=${encodeURIComponent(value)}`);
-        let data = await res.json();
-        if(data.exists) {
-            document.getElementById(warnId).innerHTML = `<i class="fas fa-exclamation-triangle"></i> Terdaftar a.n. ${data.name}`;
-            document.getElementById(warnId).style.display = 'block';
-            return true;
-        } else {
-            document.getElementById(warnId).style.display = 'none';
-            return false;
-        }
+        try {
+            let res = await fetch(`check_duplicate.php?type=${type}&value=${encodeURIComponent(value)}`);
+            let data = await res.json();
+            if(data.exists) {
+                document.getElementById(warnId).innerHTML = `<i class="fas fa-exclamation-triangle"></i> Terdaftar a.n. ${data.name}`;
+                document.getElementById(warnId).style.display = 'block';
+                return true;
+            } else {
+                document.getElementById(warnId).style.display = 'none';
+                return false;
+            }
+        } catch(e) { return false; }
     }
 
     const validateAllDups = async () => {
@@ -757,244 +897,256 @@ document.addEventListener("DOMContentLoaded", function() {
         isDuplicate = n1 || n2 || n3;
     };
 
-    inpNip.addEventListener('blur', validateAllDups);
-    inpNidn.addEventListener('blur', validateAllDups);
-    inpNuptk.addEventListener('blur', validateAllDups);
+    if(inpNip) inpNip.addEventListener('blur', validateAllDups);
+    if(inpNidn) inpNidn.addEventListener('blur', validateAllDups);
+    if(inpNuptk) inpNuptk.addEventListener('blur', validateAllDups);
     
     // Prevent Form Submit if duplicate
-    document.querySelector('form').addEventListener('submit', function(e) {
+    document.getElementById('formDosen').addEventListener('submit', function(e) {
         if(isDuplicate) {
             e.preventDefault();
             alert("Gagal menyimpan: NIP / NIDN / NUPTK sudah terdaftar! Mohon periksa kembali input Anda.");
+            // Switch to Identitas tab
+            const triggerEl = document.querySelector('#pribadi-tab');
+            if(triggerEl) {
+                const tab = new bootstrap.Tab(triggerEl);
+                tab.show();
+            }
         }
     });
 
-    // Jenis Dosen Struktural → tampilkan Jabatan Struktural
+    // File name displays
+    document.querySelector('input[name="dok_ktp"]').addEventListener('change', function(){
+        document.getElementById('ktp_name').textContent = this.files[0]?.name || '';
+    });
+    document.querySelector('input[name="dok_kk"]').addEventListener('change', function(){
+        document.getElementById('kk_name').textContent = this.files[0]?.name || '';
+    });
+
+    // Handle Structural/Non Switch
     document.querySelectorAll('input[name="jenis_dosen"]').forEach(r => {
         r.addEventListener('change', function() {
-            const jabArea = document.getElementById('area_jabatan_struktural');
-            const groupTmk = document.getElementById('group_tmk');
-            const groupTmtk = document.getElementById('group_tmtk');
-            
+            const area = document.getElementById('area_jabatan_struktural');
             if (this.value === 'Struktural') {
-                jabArea.classList.remove('hidden');
-                groupTmk.classList.remove('hidden');
-                groupTmtk.classList.add('hidden');
+                area.classList.remove('hidden');
             } else {
-                jabArea.classList.add('hidden');
-                groupTmk.classList.add('hidden');
-                groupTmtk.classList.remove('hidden');
+                area.classList.add('hidden');
             }
         });
     });
 });
 
+function previewImage(input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('photoPreview').innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; object-fit:cover;">`;
+        }
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function addStatusDosen() {
+    const html = `<div class="dynamic-item">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label text-primary small">Status Dosen</label>
+                <select name="status_dosen[]" class="form-select form-select-sm" required>
+                    <option value="">- Pilih Status -</option>
+                    <option value="Tetap">Tetap</option>
+                    <option value="Tidak Tetap">Tidak Tetap</option>
+                    <option value="Homebase">Homebase</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small">TMT Status</label>
+                <input type="date" name="tmt_status[]" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small">SK Status</label>
+                <input type="file" name="dok_status[]" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
+        </div>
+    </div>`;
+    document.getElementById('status-wrapper').insertAdjacentHTML('beforeend', html);
+}
+
+function addJabfung() {
+    const html = `<div class="dynamic-item">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label text-primary small">Jabatan Akademik</label>
+                <select name="jabfung_akademik[]" class="form-select form-select-sm">
+                    <option value="">- Pilih Jabatan Akademik -</option>
+                    <option value="Asisten Ahli">Asisten Ahli</option>
+                    <option value="Asisten Ahli">Asisten Ahli</option>
+                    <option value="Lektor">Lektor</option>
+                    <option value="Lektor Kepala">Lektor Kepala</option>
+                    <option value="Guru Besar">Guru Besar</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small">TMT</label>
+                <input type="date" name="tmt_jabfung[]" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small">Upload SK</label>
+                <input type="file" name="dok_jabfung[]" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
+        </div>
+    </div>`;
+    document.getElementById('jabfung-wrapper').insertAdjacentHTML('beforeend', html);
+}
+
+function addPendidikan() {
+    const html = `<div class="dynamic-item">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label text-success small">Jenjang</label>
+                <select name="pend_jenjang[]" class="form-select form-select-sm" required>
+                    <option value="">- Pilih -</option>
+                    <option value="S1">S1</option><option value="S2">S2</option><option value="S3">S3</option>
+                </select>
+            </div>
+            <div class="col-md-8">
+                <label class="form-label small">Institusi</label>
+                <input type="text" name="pend_institusi[]" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small">Tahun Lulus</label>
+                <input type="date" name="pend_tahun[]" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small">File Ijazah</label>
+                <input type="file" name="dok_pendidikan[]" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
+        </div>
+    </div>`;
+    document.getElementById('pendidikan-wrapper').insertAdjacentHTML('beforeend', html);
+}
+
+function addSerdos() {
+    const html = `<div class="p-3 bg-white border rounded-4 mb-2 position-relative">
+        <button type="button" onclick="this.closest('div').remove()" class="btn-remove" style="top:10px; right:10px;"><i class="fas fa-times"></i></button>
+        <label class="form-label small">Nomor Sertifikat</label>
+        <input type="text" name="no_serdos[]" class="form-control form-control-sm mb-2">
+        <label class="form-label small">TMT</label>
+        <input type="date" name="tmt_serdos[]" class="form-control form-control-sm mb-2">
+        <label class="form-label small">File</label>
+        <input type="file" name="dok_serdos[]" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
+    </div>`;
+    document.getElementById('serdos-list-area').insertAdjacentHTML('beforeend', html);
+}
+
 function addReward() {
-    const html = `<div class="dynamic-item" style="background:#f8fafc; padding:16px; border-radius:10px; border:1px solid #e2e8f0; margin-bottom:12px;">
-        <div class="form-group"><input type="text" name="reward_deskripsi[]" placeholder="Deskripsi penghargaan..."></div>
-        <div class="multi-row" style="grid-template-columns: 1fr 1fr auto; align-items:end;">
-            <div class="form-group"><label style="font-size:0.8rem;">Tanggal</label><input type="date" name="reward_tanggal[]"></div>
-            <div class="form-group"><label style="font-size:0.8rem;">Dokumen</label><input type="file" name="reward_file[]"></div>
-            <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); margin-bottom:20px;"><i class="fas fa-trash"></i></button>
+    const html = `<div class="dynamic-item">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
+        <label class="form-label text-warning small">Deskripsi Penghargaan</label>
+        <input type="text" name="reward_deskripsi[]" class="form-control form-control-sm mb-2">
+        <div class="row g-2">
+            <div class="col-12"><input type="file" name="reward_file[]" class="form-control form-control-sm"></div>
         </div>
     </div>`;
     document.getElementById('reward-wrapper').insertAdjacentHTML('beforeend', html);
 }
 
 function addPunishment() {
-    const html = `<div class="dynamic-item" style="background:#f8fafc; padding:16px; border-radius:10px; border:1px solid #e2e8f0; margin-bottom:12px;">
-        <div class="form-group"><input type="text" name="punishment_deskripsi[]" placeholder="Deskripsi sanksi/pelanggaran..."></div>
-        <div class="multi-row" style="grid-template-columns: 1fr 1fr auto; align-items:end;">
-            <div class="form-group"><label style="font-size:0.8rem;">Tanggal</label><input type="date" name="punishment_tanggal[]"></div>
-            <div class="form-group"><label style="font-size:0.8rem;">Dokumen</label><input type="file" name="punishment_file[]"></div>
-            <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); margin-bottom:20px;"><i class="fas fa-trash"></i></button>
+    const html = `<div class="dynamic-item">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
+        <label class="form-label text-danger small">Deskripsi Sanksi</label>
+        <input type="text" name="punishment_deskripsi[]" class="form-control form-control-sm mb-2">
+        <div class="row g-2">
+            <div class="col-12"><input type="file" name="punishment_file[]" class="form-control form-control-sm"></div>
         </div>
     </div>`;
     document.getElementById('punishment-wrapper').insertAdjacentHTML('beforeend', html);
 }
 
-function addStatusDosen() {
-    const html = `<div class="dynamic-item">
-        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
-        <div class="form-group">
-            <label>Status Dosen</label>
-            <select name="status_dosen[]" required>
-                <option value="">- Pilih Status Dosen -</option>
-                <option value="Tetap">Tetap</option>
-                <option value="Tidak Tetap">Tidak Tetap</option>
-                <option value="Homebase">Homebase</option>
-            </select>
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top:12px;">
-            <div class="form-group"><label>Terhitung Mulai Bekerja</label><input type="date" name="tmt_status[]"></div>
-            <div class="form-group"><label>Tanggal Berhenti <span style="color:var(--text-muted); font-weight:400;">(Jika Ada)</span></label><input type="date" name="tgl_berhenti_status[]"></div>
-            <div class="form-group"><label>Upload Dokumen</label><input type="file" name="dok_status[]" accept=".pdf,.jpg,.png"></div>
-        </div>
-    </div>`;
-    document.getElementById('status-wrapper').insertAdjacentHTML('beforeend', html);
-}
-
-function toggleKeaktifan(el) {
-    const area = document.getElementById('area_keaktifan_details');
-    if(el.value === 'Tidak Aktif') {
-        area.classList.remove('hidden');
-    } else {
-        area.classList.add('hidden');
-    }
-}
-function toggleKeaktifanLainnya(el) {
-    const area = document.getElementById('area_tidak_aktif_lainnya');
-    if(el.value === 'Lainnya') {
-        area.classList.remove('hidden');
-    } else {
-        area.classList.add('hidden');
-    }
-}
-
-function addJabfung() {
-    const html = `<div class="dynamic-item">
-        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
-        <div class="form-group">
-            <label>Jabatan Akademik Dosen</label>
-            <select name="jabfung_akademik[]">
-                <option value="">- Pilih Jabatan Akademik -</option>
-                <option value="Asisten Ahli">Asisten Ahli</option>
-                <option value="Lektor">Lektor</option>
-                <option value="Lektor Kepala">Lektor Kepala</option>
-                <option value="Guru Besar">Guru Besar</option>
-            </select>
-        </div>
-        <div class="form-group" style="margin-top:12px;">
-            <label style="font-size:0.8rem">TMT Jabfung <span style="color:var(--text-muted);">(Tanggal Mulai Berlaku)</span></label>
-            <input type="date" name="tmt_jabfung[]">
-            <small style="color:var(--text-muted); font-size:0.75rem; margin-top:4px; display:block;">Pilih tanggal surat keputusan jabatan fungsional mulai berlaku.</small>
-        </div>
-        <div class="form-group" style="margin-top:12px;">
-            <label>Keterangan</label>
-            <input type="text" name="ket_jabfung[]" placeholder="Keterangan tambahan (opsional)">
-        </div>
-        <div class="form-group" style="margin-top:12px;">
-            <label style="font-size:0.8rem">Upload SK Jabfung <span style="color:var(--text-muted);">(PDF/JPG)</span></label>
-            <input type="file" name="dok_jabfung[]" accept=".pdf,.jpg,.png">
-        </div>
-    </div>`;
-    document.getElementById('jabfung-wrapper').insertAdjacentHTML('beforeend', html);
-}
-
-function addLldikti() {
-    const html = `<div class="dynamic-item">
-        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
-        <div class="form-group">
-            <select name="gol_lldikti[]">
-                <option value="">- Pilih Golongan -</option>
-                <option value="III/a">III/a</option>
-                <option value="III/b">III/b</option>
-                <option value="III/c">III/c</option>
-                <option value="III/d">III/d</option>
-                <option value="IV/a">IV/a</option>
-                <option value="IV/b">IV/b</option>
-                <option value="IV/c">IV/c</option>
-                <option value="IV/d">IV/d</option>
-            </select>
-        </div>
-        <div class="form-group" style="margin-top:12px;">
-            <label style="font-size:0.8rem">TMT</label>
-            <input type="date" name="tmt_gol_lldikti[]">
-        </div>
-        <div class="form-group" style="margin-top:12px;">
-            <label style="font-size:0.8rem">Upload SK</label>
-            <input type="file" name="dok_gol_lldikti[]" accept=".pdf,.jpg,.png">
-        </div>
-    </div>`;
-    document.getElementById('lldikti-wrapper').insertAdjacentHTML('beforeend', html);
-}
-
-function addYayasan() {
-    const html = `<div class="dynamic-item">
-        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
-        <div class="form-group">
-            <label>Golongan Yayasan</label>
-            <select name="gol_yayasan[]">
-                <option value="">- Pilih Golongan -</option>
-                <option value="III/a">III/a</option>
-                <option value="III/b">III/b</option>
-                <option value="III/c">III/c</option>
-                <option value="III/d">III/d</option>
-                <option value="IV/a">IV/a</option>
-                <option value="IV/b">IV/b</option>
-                <option value="IV/c">IV/c</option>
-                <option value="IV/d">IV/d</option>
-            </select>
-        </div>
-        <div class="multi-row" style="margin-top:12px;">
-            <div class="form-group"><label>TMT Golongan Yayasan</label><input type="date" name="tmt_gol_yayasan[]"></div>
-            <div class="form-group"><label>Upload SK Golongan Yayasan</label><input type="file" name="dok_gol_yayasan[]" accept=".pdf,.jpg,.png"></div>
-        </div>
-    </div>`;
-    document.getElementById('yayasan-wrapper').insertAdjacentHTML('beforeend', html);
-}
-
-function addPendidikan() {
-    const html = `<div class="dynamic-item">
-        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-icon" style="color:var(--danger); position:absolute; right:15px; top:15px;"><i class="fas fa-trash"></i></button>
-        <div class="multi-row">
-            <div class="form-group">
-                <label>Jenjang / Tingkat</label>
-                <select name="pend_jenjang[]" required>
-                    <option value="">- Pilih -</option>
-                    <option value="S1">S1</option>
-                    <option value="S2">S2</option>
-                    <option value="S3">S3</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Nama Institusi / Universitas</label>
-                <input type="text" name="pend_institusi[]" placeholder="Contoh: Universitas Indonesia" required>
-            </div>
-        </div>
-        <div class="multi-row" style="margin-top:12px;">
-            <div class="form-group"><label>Tahun Lulus</label><input type="number" name="pend_tahun[]" min="1950" max="2100" placeholder="YYYY" required></div>
-            <div class="form-group"><label>Upload Ijazah/Transkrip</label><input type="file" name="dok_pendidikan[]" accept=".pdf,.jpg,.png"></div>
-        </div>
-    </div>`;
-    document.getElementById('pendidikan-wrapper').insertAdjacentHTML('beforeend', html);
-}
-</script>
-
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    const jabArea = document.getElementById('area_jabatan_struktural');
-    const grpTmk = document.getElementById('group_tmk');
-    const grpTmtk = document.getElementById('group_tmtk');
-    const tmkInput = document.getElementsByName('tmk')[0];
-    const tmtkInput = document.getElementById('tmtk_input');
+function toggleStatusKeaktifan(main) {
+    const selectSub = document.getElementById('select_sub_status');
+    const areaLainnya = document.getElementById('wrapper_keaktifan_lainnya');
     
-    // Default hiding
-    jabArea.classList.add('hidden');
-    grpTmk?.classList.add('hidden');
-    grpTmtk?.classList.add('hidden');
+    // Clear sub-options
+    selectSub.innerHTML = '';
+    areaLainnya.classList.add('hidden');
 
-    document.querySelectorAll('input[name="jenis_dosen"]').forEach(r => {
-        r.addEventListener('change', function() {
-            const currentVal = this.value;
-            // Clear inputs when switching
-            if (tmkInput) tmkInput.value = '';
-            if (tmtkInput) tmtkInput.value = '';
-            
-            if (currentVal === 'Struktural') {
-                jabArea.classList.remove('hidden');
-                grpTmk?.classList.remove('hidden');
-                grpTmtk?.classList.add('hidden');
-            } else if (currentVal === 'Non Struktural') {
-                jabArea.classList.add('hidden');
-                grpTmk?.classList.add('hidden');
-                grpTmtk?.classList.add('hidden');
-            }
+    if (main === 'Aktif') {
+        const opts = [
+            {v: '-', t: 'Aktif Normal'},
+            {v: 'Cuti', t: 'Cuti'},
+            {v: 'Izin Belajar', t: 'Izin Belajar'},
+            {v: 'Tugas Belajar', t: 'Tugas Belajar'},
+            {v: 'Lainnya', t: 'Lainnya'}
+        ];
+        opts.forEach(o => {
+            let opt = new Option(o.t, o.v);
+            selectSub.add(opt);
         });
-    });
-});
-</script>
+    } else {
+        const opts = [
+            {v: 'Diberhentikan', t: 'Diberhentikan'},
+            {v: 'Resign', t: 'Resign'},
+            {v: 'Pensiun', t: 'Pensiun'},
+            {v: 'Lainnya', t: 'Lainnya'}
+        ];
+        opts.forEach(o => {
+            let opt = new Option(o.t, o.v);
+            selectSub.add(opt);
+        });
+    }
+}
 
+function handleSubStatus(el) {
+    const areaLainnya = document.getElementById('wrapper_keaktifan_lainnya');
+    if (el.value === 'Lainnya') {
+        areaLainnya.classList.remove('hidden');
+    } else {
+        areaLainnya.classList.add('hidden');
+    }
+}
+
+function addNewItem(selectId, label) {
+    const select = document.getElementById(selectId);
+    const newVal = prompt("Masukkan " + label + " baru:");
+    if (newVal && newVal.trim() !== "") {
+        const opt = document.createElement('option');
+        opt.value = newVal;
+        opt.textContent = newVal;
+        opt.selected = true;
+        select.insertBefore(opt, select.firstChild);
+    }
+}
+
+// Global handler for hidden required fields in tabs (with debouncing to prevent blinking)
+let lastInvalidTime = 0;
+document.addEventListener('invalid', function(e) {
+    const now = Date.now();
+    const field = e.target;
+    const pane = field.closest('.tab-pane');
+    
+    // If it's a hidden tab
+    if (pane && !pane.classList.contains('active')) {
+        e.preventDefault(); // Stop native focus attempt
+        
+        // Only trigger switch for the first one detected in a batch
+        if (now - lastInvalidTime > 500) {
+            lastInvalidTime = now;
+            const tabId = pane.id;
+            const tabTrigger = document.querySelector(`[data-bs-target="#${tabId}"], [href="#${tabId}"]`);
+            if (tabTrigger) {
+                const tab = new bootstrap.Tab(tabTrigger);
+                tab.show();
+                setTimeout(() => {
+                    field.focus();
+                    field.reportValidity();
+                }, 300);
+            }
+        }
+    }
+}, true);
+</script>
 </body>
 </html>
-

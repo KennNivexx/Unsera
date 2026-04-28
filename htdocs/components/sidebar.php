@@ -10,7 +10,7 @@ $inactive_pages = ['data_tidak_aktif.php'];
         <img src="download.png" alt="Logo UNSERA" class="sidebar-logo">
         <div class="brand-text">
             <h2>Kepegawaian</h2>
-            <span>Universitas Serang Raya</span>
+            <span>UNSERA PORTAL</span>
         </div>
     </div>
 
@@ -19,7 +19,7 @@ $inactive_pages = ['data_tidak_aktif.php'];
 
         <li>
             <a href="dashboard.php" class="<?= $current_page == 'dashboard.php' ? 'active' : '' ?>">
-                <i class="fas fa-th-large"></i> Dashboard
+                <i class="fas fa-columns"></i> Dashboard
             </a>
         </li>
 
@@ -31,22 +31,22 @@ $inactive_pages = ['data_tidak_aktif.php'];
             <ul id="sub-dosen" class="submenu <?= in_array($current_page, $dosen_pages) ? 'show' : '' ?>">
                 <li>
                     <a href="input_dosen.php" class="<?= $current_page == 'input_dosen.php' ? 'active' : '' ?>">
-                        <i class="fas fa-plus-circle"></i> Tambah Dosen
+                        <i class="fas fa-plus"></i> Tambah Dosen
                     </a>
                 </li>
                 <li>
                     <a href="edit_dosen.php" class="<?= in_array($current_page, ['edit_dosen.php', 'form_edit_dosen.php']) ? 'active' : '' ?>">
-                        <i class="fas fa-edit"></i> Edit Dosen
+                        <i class="fas fa-user-edit"></i> Edit Dosen
                     </a>
                 </li>
                 <li>
                     <a href="daftar_dosen.php" class="<?= in_array($current_page, ['daftar_dosen.php','detail_dosen.php']) ? 'active' : '' ?>">
-                        <i class="fas fa-list"></i> Daftar Dosen
+                        <i class="fas fa-table"></i> Daftar Dosen
                     </a>
                 </li>
                 <li>
                     <a href="hapus_dosen.php" class="<?= $current_page == 'hapus_dosen.php' ? 'active' : '' ?>">
-                        <i class="fas fa-trash-alt"></i> Hapus Dosen
+                        <i class="fas fa-user-minus"></i> Hapus Dosen
                     </a>
                 </li>
             </ul>
@@ -55,12 +55,12 @@ $inactive_pages = ['data_tidak_aktif.php'];
         <li>
             <a href="#" onclick="toggleSubmenu('sub-pegawai', this); return false;"
                class="submenu-toggle <?= in_array($current_page, $pegawai_pages) ? 'open' : '' ?>">
-                <i class="fas fa-users-cog"></i> Data Pegawai
+                <i class="fas fa-user-tie"></i> Data Pegawai
             </a>
             <ul id="sub-pegawai" class="submenu <?= in_array($current_page, $pegawai_pages) ? 'show' : '' ?>">
                 <li>
                     <a href="input_pegawai.php" class="<?= $current_page == 'input_pegawai.php' ? 'active' : '' ?>">
-                        <i class="fas fa-plus-circle"></i> Tambah Pegawai
+                        <i class="fas fa-user-plus"></i> Tambah Pegawai
                     </a>
                 </li>
                 <li>
@@ -70,12 +70,12 @@ $inactive_pages = ['data_tidak_aktif.php'];
                 </li>
                 <li>
                     <a href="data_pegawai.php" class="<?= in_array($current_page, ['data_pegawai.php','detail_pegawai.php']) ? 'active' : '' ?>">
-                        <i class="fas fa-list"></i> Daftar Pegawai
+                        <i class="fas fa-users"></i> Daftar Pegawai
                     </a>
                 </li>
                 <li>
                     <a href="hapus_pegawai.php" class="<?= $current_page == 'hapus_pegawai.php' ? 'active' : '' ?>">
-                        <i class="fas fa-trash-alt"></i> Hapus Pegawai
+                        <i class="fas fa-user-times"></i> Hapus Pegawai
                     </a>
                 </li>
             </ul>
@@ -89,12 +89,12 @@ $inactive_pages = ['data_tidak_aktif.php'];
             <ul id="sub-inactive" class="submenu <?= in_array($current_page, $inactive_pages) ? 'show' : '' ?>">
                 <li>
                     <a href="data_tidak_aktif.php?type=dosen" class="<?= ($current_page == 'data_tidak_aktif.php' && ($_GET['type']??'') == 'dosen') ? 'active' : '' ?>">
-                        <i class="fas fa-chalkboard-teacher" style="margin-right:8px;"></i> Dosen
+                        <i class="fas fa-user-lock"></i> Dosen
                     </a>
                 </li>
                 <li>
                     <a href="data_tidak_aktif.php?type=pegawai" class="<?= ($current_page == 'data_tidak_aktif.php' && ($_GET['type']??'') == 'pegawai') ? 'active' : '' ?>">
-                        <i class="fas fa-users-cog" style="margin-right:8px;"></i> Pegawai
+                        <i class="fas fa-user-lock"></i> Pegawai
                     </a>
                 </li>
             </ul>
@@ -106,12 +106,12 @@ $inactive_pages = ['data_tidak_aktif.php'];
             </a>
         </li>
 
-        <li class="sidebar-label" style="margin-top: 10px;">MANAJEMEN SURAT</li>
+        <li class="sidebar-label">PENGELOLAAN</li>
 
         <li>
             <a href="#" onclick="toggleSubmenu('sub-surat', this); return false;"
                class="submenu-toggle <?= in_array($current_page, $surat_pages) ? 'open' : '' ?>">
-                <i class="fas fa-envelope-open-text"></i> Jenis Surat
+                <i class="fas fa-file-signature"></i> Jenis Surat
             </a>
             <ul id="sub-surat" class="submenu <?= in_array($current_page, $surat_pages) ? 'show' : '' ?>">
                 <?php
@@ -126,8 +126,8 @@ $inactive_pages = ['data_tidak_aktif.php'];
                 }
                 ?>
                 <li>
-                    <a href="jenis_surat.php" class="<?= $current_page == 'jenis_surat.php' ? 'active' : '' ?>" style="font-weight: 600;">
-                        <i class="fas fa-cog"></i> Kelola Jenis
+                    <a href="jenis_surat.php" class="<?= $current_page == 'jenis_surat.php' ? 'active' : '' ?>">
+                        <i class="fas fa-sliders-h"></i> Kelola Jenis
                     </a>
                 </li>
             </ul>
@@ -136,7 +136,7 @@ $inactive_pages = ['data_tidak_aktif.php'];
 
     <div class="sidebar-bottom">
         <a href="logout.php" class="logout-link">
-            <i class="fas fa-sign-out-alt"></i> Logout
+            <i class="fas fa-sign-out-alt"></i> Logout Akun
         </a>
     </div>
 </div>
@@ -145,7 +145,7 @@ $inactive_pages = ['data_tidak_aktif.php'];
 function toggleSubmenu(id, el) {
     const sub = document.getElementById(id);
     const isOpen = sub.classList.contains('show');
-    // Close all other submenus, but not the one being toggled
+    // Close all other submenus
     document.querySelectorAll('.sidebar .submenu').forEach(s => { if (s.id !== id) s.classList.remove('show'); });
     document.querySelectorAll('.sidebar .submenu-toggle').forEach(t => { if (t !== el) t.classList.remove('open'); });
     // Toggle current
