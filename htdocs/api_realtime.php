@@ -11,33 +11,48 @@ header('Content-Type: application/json');
 $action = $_GET['action'] ?? 'stats';
 
 if ($action === 'stats') {
-    $totalDosen    = $conn->query("SELECT COUNT(*) as c FROM dosen")->fetch_assoc()['c'];
-    $dosenTetap    = $conn->query("SELECT COUNT(*) as c FROM dosen WHERE LOWER(status_dosen)='tetap'")->fetch_assoc()['c'];
-    $dosenTidakTetap = $conn->query("SELECT COUNT(*) as c FROM dosen WHERE LOWER(status_dosen)='tidak tetap'")->fetch_assoc()['c'];
-    $dosenHomebase = $conn->query("SELECT COUNT(*) as c FROM dosen WHERE LOWER(status_dosen)='homebase'")->fetch_assoc()['c'];
+    $q_td = $conn->query("SELECT COUNT(*) as c FROM dosen WHERE status_keaktifan != 'Tidak Aktif'");
+    $totalDosen = ($q_td) ? $q_td->fetch_assoc()['c'] : 0;
+    
+    $q_dt = $conn->query("SELECT COUNT(*) as c FROM dosen WHERE status_keaktifan != 'Tidak Aktif' AND LOWER(status_dosen)='tetap'");
+    $dosenTetap = ($q_dt) ? $q_dt->fetch_assoc()['c'] : 0;
+    
+    $q_dtt = $conn->query("SELECT COUNT(*) as c FROM dosen WHERE status_keaktifan != 'Tidak Aktif' AND LOWER(status_dosen)='tidak tetap'");
+    $dosenTidakTetap = ($q_dtt) ? $q_dtt->fetch_assoc()['c'] : 0;
+    
+    $q_dh = $conn->query("SELECT COUNT(*) as c FROM dosen WHERE status_keaktifan != 'Tidak Aktif' AND LOWER(status_dosen)='homebase'");
+    $dosenHomebase = ($q_dh) ? $q_dh->fetch_assoc()['c'] : 0;
 
-    $totalPegawai      = $conn->query("SELECT COUNT(*) as c FROM pegawai")->fetch_assoc()['c'];
-    $pegawaiTetap      = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE LOWER(status_pegawai)='tetap' OR LOWER(jenis_pegawai)='tetap'")->fetch_assoc()['c'];
-    $pegawaiTidakTetap = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE LOWER(status_pegawai)='tidak tetap' OR LOWER(status_pegawai)='tdk tetap' OR LOWER(jenis_pegawai)='tidak tetap' OR LOWER(jenis_pegawai)='tdk tetap'")->fetch_assoc()['c'];
+    $q_tp = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE status_keaktifan != 'Tidak Aktif'");
+    $totalPegawai = ($q_tp) ? $q_tp->fetch_assoc()['c'] : 0;
+    
+    $q_pt = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE status_keaktifan != 'Tidak Aktif' AND (LOWER(status_pegawai)='tetap' OR LOWER(jenis_pegawai)='tetap')");
+    $pegawaiTetap = ($q_pt) ? $q_pt->fetch_assoc()['c'] : 0;
+    
+    $q_ptt = $conn->query("SELECT COUNT(*) as c FROM pegawai WHERE status_keaktifan != 'Tidak Aktif' AND (LOWER(status_pegawai)='tidak tetap' OR LOWER(status_pegawai)='tdk tetap' OR LOWER(jenis_pegawai)='tidak tetap' OR LOWER(jenis_pegawai)='tdk tetap')");
+    $pegawaiTidakTetap = ($q_ptt) ? $q_ptt->fetch_assoc()['c'] : 0;
 
 
-    // Jabfung breakdown per jenis
+    // Optimized Jabfung breakdown: Get latest jabfung for each dosen and count them
     $jabfungBreakdown = [];
-    $dosenRows = $conn->query("SELECT id, jabfung_akademik FROM dosen");
-    if ($dosenRows) {
-        while($row = $dosenRows->fetch_assoc()) {
-            $did = $row['id'];
-            $j = trim($row['jabfung_akademik'] ?? '');
-            $qj = $conn->query("SELECT jabatan FROM jabfung_dosen WHERE dosen_id=$did ORDER BY tmt DESC, id DESC LIMIT 1");
-            if($qj && $rj = $qj->fetch_assoc()) {
-                if (trim($rj['jabatan']) !== '') $j = trim($rj['jabatan']);
-            }
-            if(!empty($j) && $j !== '-') {
-                $jabfungBreakdown[$j] = ($jabfungBreakdown[$j] ?? 0) + 1;
-            }
+    $jabfungQuery = "SELECT jabatan, COUNT(*) as count 
+                    FROM (
+                        SELECT d.id, COALESCE(
+                            (SELECT jd.jabatan FROM jabfung_dosen jd WHERE jd.dosen_id = d.id ORDER BY jd.tmt DESC, jd.id DESC LIMIT 1),
+                            d.jabfung_akademik
+                        ) as jabatan
+                        FROM dosen d
+                        WHERE d.status_keaktifan != 'Tidak Aktif'
+                    ) as latest_jabfungs
+                    WHERE jabatan IS NOT NULL AND jabatan != '' AND jabatan != '-'
+                    GROUP BY jabatan 
+                    ORDER BY count DESC";
+    $resJab = $conn->query($jabfungQuery);
+    if ($resJab) {
+        while($row = $resJab->fetch_assoc()) {
+            $jabfungBreakdown[$row['jabatan']] = (int)$row['count'];
         }
     }
-    arsort($jabfungBreakdown);
 
     $golLldikti = $golLldikti_tmt = '-';
     $maxId = 0;
@@ -45,13 +60,13 @@ if ($action === 'stats') {
     if ($q1 && $r1 = $q1->fetch_assoc()) {
         $maxId = $r1['id'];
         $golLldikti = $r1['gol_lldikti'];
-        $golLldikti_tmt = $r1['tmt_gol_lldikti'] ? date('d M Y', strtotime($r1['tmt_gol_lldikti'])) : '-';
+        $golLldikti_tmt = !empty($r1['tmt_gol_lldikti']) ? date('d M Y', strtotime($r1['tmt_gol_lldikti'])) : '-';
     }
     $q2 = $conn->query("SELECT id, golongan, tmt FROM lldikti_dosen WHERE golongan!='' AND golongan!='-' ORDER BY id DESC LIMIT 1");
     if ($q2 && $r2 = $q2->fetch_assoc()) {
         if ($r2['id'] > $maxId) {
             $golLldikti = $r2['golongan'];
-            $golLldikti_tmt = $r2['tmt'] ? date('d M Y', strtotime($r2['tmt'])) : '-';
+            $golLldikti_tmt = !empty($r2['tmt']) ? date('d M Y', strtotime($r2['tmt'])) : '-';
         }
     }
 
@@ -61,23 +76,32 @@ if ($action === 'stats') {
     if ($q3 && $r3 = $q3->fetch_assoc()) {
         $maxYId = $r3['id'];
         $golYayasan = $r3['gol_yayasan'];
-        $golYayasan_tmt = $r3['tmt_gol_yayasan'] ? date('d M Y', strtotime($r3['tmt_gol_yayasan'])) : '-';
+        $golYayasan_tmt = !empty($r3['tmt_gol_yayasan']) ? date('d M Y', strtotime($r3['tmt_gol_yayasan'])) : '-';
     }
     $q4 = $conn->query("SELECT id, golongan, tmt FROM yayasan_dosen WHERE golongan!='' AND golongan!='-' ORDER BY id DESC LIMIT 1");
     if ($q4 && $r4 = $q4->fetch_assoc()) {
         if ($r4['id'] > $maxYId) {
             $maxYId = $r4['id'];
             $golYayasan = $r4['golongan'];
-            $golYayasan_tmt = $r4['tmt'] ? date('d M Y', strtotime($r4['tmt'])) : '-';
+            $golYayasan_tmt = !empty($r4['tmt']) ? date('d M Y', strtotime($r4['tmt'])) : '-';
         }
     }
     $q5 = $conn->query("SELECT id, golongan, tmt FROM yayasan_pegawai WHERE golongan!='' AND golongan!='-' ORDER BY id DESC LIMIT 1");
     if ($q5 && $r5 = $q5->fetch_assoc()) {
         if ($r5['id'] > $maxYId) {
             $golYayasan = $r5['golongan'];
-            $golYayasan_tmt = $r5['tmt'] ? date('d M Y', strtotime($r5['tmt'])) : '-';
+            $golYayasan_tmt = !empty($r5['tmt']) ? date('d M Y', strtotime($r5['tmt'])) : '-';
         }
     }
+
+    // Status Keaktifan (Combined)
+    $dosenAktif = $conn->query("SELECT COUNT(*) as count FROM dosen WHERE status_keaktifan='Aktif'")->fetch_assoc()['count'];
+    $dosenTidakAktif = $conn->query("SELECT COUNT(*) as count FROM dosen WHERE status_keaktifan='Tidak Aktif'")->fetch_assoc()['count'];
+    $pegawaiAktif = $conn->query("SELECT COUNT(*) as count FROM pegawai WHERE status_keaktifan='Aktif'")->fetch_assoc()['count'];
+    $pegawaiTidakAktif = $conn->query("SELECT COUNT(*) as count FROM pegawai WHERE status_keaktifan='Tidak Aktif'")->fetch_assoc()['count'];
+
+    $totalAktif = (int)$dosenAktif + (int)$pegawaiAktif;
+    $totalTidakAktif = (int)$dosenTidakAktif + (int)$pegawaiTidakAktif;
 
     // Education Aggregation
     $eduDosen = [];
@@ -110,13 +134,11 @@ if ($action === 'stats') {
         'totalPegawai'      => $totalPegawai,
         'pegawaiTetap'      => $pegawaiTetap,
         'pegawaiTidakTetap' => $pegawaiTidakTetap,
+        'totalAktif'        => $totalAktif,
+        'totalTidakAktif'   => $totalTidakAktif,
         'jabfungBreakdown'  => $jabfungBreakdown,
         'eduDosen'         => $eduDosen,
         'eduPegawai'       => $eduPegawai,
-        'golLldikti'        => $golLldikti,
-        'golLldikti_tmt'    => $golLldikti_tmt,
-        'golYayasan'        => $golYayasan,
-        'golYayasan_tmt'    => $golYayasan_tmt,
         'timestamp'         => date('H:i:s') . ' WIB',
     ]);
 
@@ -125,7 +147,7 @@ if ($action === 'stats') {
     $status = $_GET['status'] ?? '';
     $jabfung = $_GET['jabfung'] ?? '';
     
-    $where_clauses = [];
+    $where_clauses = ["status_keaktifan != 'Tidak Aktif'"];
     if ($search) {
         $s = $conn->real_escape_string($search);
         $where_clauses[] = "(nama_lengkap LIKE '%$s%' OR status_dosen LIKE '%$s%')";
@@ -139,7 +161,7 @@ if ($action === 'stats') {
         $where_clauses[] = "jabfung_akademik = '$s_jabfung'";
     }
     
-    $where = count($where_clauses) > 0 ? " WHERE " . implode(" AND ", $where_clauses) : "";
+    $where = " WHERE " . implode(" AND ", $where_clauses);
     
     $data = $conn->query("SELECT id, nama_lengkap, status_dosen, jenis_dosen, jabatan_struktural, homebase_prodi, no_serdos, foto_profil FROM dosen$where ORDER BY id DESC");
     $rows = [];
@@ -170,12 +192,18 @@ if ($action === 'stats') {
     echo json_encode(['rows' => $rows, 'timestamp' => date('H:i:s') . ' WIB']);
 
 } elseif ($action === 'pegawai_list') {
-    $search = $_GET['search'] ?? '';
-    $where  = '';
+    $status = $_GET['status'] ?? '';
+    
+    $where_clauses = ["status_keaktifan != 'Tidak Aktif'"];
     if ($search) {
         $s = $conn->real_escape_string($search);
-        $where = " WHERE nama_lengkap LIKE '%$s%' OR status_pegawai LIKE '%$s%'";
+        $where_clauses[] = "(nama_lengkap LIKE '%$s%' OR status_pegawai LIKE '%$s%')";
     }
+    if ($status) {
+        $s_status = $conn->real_escape_string($status);
+        $where_clauses[] = "status_pegawai = '$s_status'";
+    }
+    $where = " WHERE " . implode(" AND ", $where_clauses);
     $data = $conn->query("SELECT id, nama_lengkap, status_pegawai, posisi_jabatan, unit_kerja, riwayat_pendidikan, foto_profil FROM pegawai$where ORDER BY id DESC");
     $rows = [];
     while ($r = $data->fetch_assoc()) {

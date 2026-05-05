@@ -11,11 +11,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
 
     if ($action == 'tambah' && !empty(trim($_POST['nama_jabatan']))) {
         $jabatan = trim($_POST['nama_jabatan']);
-        $pejabat = trim($_POST['nama_pejabat'] ?? '');
-        $ket     = trim($_POST['keterangan'] ?? '');
         $parent  = !empty($_POST['parent_id']) ? (int)$_POST['parent_id'] : null;
-        $stmt = $conn->prepare("INSERT INTO struktur_organisasi (nama_jabatan, nama_pejabat, keterangan, parent_id) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("sssi", $jabatan, $pejabat, $ket, $parent);
+        $pejabat = trim($_POST['nama_pejabat'] ?? '');
+        $stmt = $conn->prepare("INSERT INTO struktur_organisasi (nama_jabatan, parent_id, nama_pejabat) VALUES (?, ?, ?)");
+        $stmt->bind_param("sis", $jabatan, $parent, $pejabat);
         $stmt->execute();
         $stmt->close();
         echo "<script>alert('Berhasil ditambahkan!');location='struktur_organisasi.php';</script>";
@@ -36,9 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         $id      = (int)$_POST['id'];
         $jabatan = trim($_POST['nama_jabatan']);
         $pejabat = trim($_POST['nama_pejabat'] ?? '');
-        $ket     = trim($_POST['keterangan'] ?? '');
-        $stmt = $conn->prepare("UPDATE struktur_organisasi SET nama_jabatan = ?, nama_pejabat = ?, keterangan = ? WHERE id = ?");
-        $stmt->bind_param("sssi", $jabatan, $pejabat, $ket, $id);
+        $stmt = $conn->prepare("UPDATE struktur_organisasi SET nama_jabatan = ?, nama_pejabat = ? WHERE id = ?");
+        $stmt->bind_param("ssi", $jabatan, $pejabat, $id);
         $stmt->execute();
         $stmt->close();
         echo "<script>alert('Berhasil diperbarui!');location='struktur_organisasi.php';</script>";
@@ -119,8 +117,8 @@ $breadcrumbs = [['label' => 'Struktur Organisasi', 'url' => '#']];
             background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
             padding: 25px; color: white; position: relative;
         }
-        .org-header h3 { font-family: 'Outfit', sans-serif; font-weight: 700; margin: 0; font-size: 1.25rem; }
-        .org-header p { opacity: 0.8; font-size: 0.9rem; margin: 5px 0 0 0; }
+        .org-header h3 { font-family: 'Outfit', sans-serif; font-weight: 700; margin: 0; font-size: 1.25rem; color: white; }
+        .org-header p { opacity: 0.9; font-size: 0.9rem; margin: 5px 0 0 0; color: white; }
         
         .sub-list { padding: 20px; flex-grow: 1; }
         .sub-item {
@@ -148,14 +146,22 @@ $breadcrumbs = [['label' => 'Struktur Organisasi', 'url' => '#']];
     <?php include 'components/navbar.php'; ?>
 
     <div class="container-fluid px-4 py-4">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <div>
+        <div class="row g-4 mb-4 align-items-center">
+            <div class="col-lg-6">
                 <h2 class="fw-bold mb-1" style="font-family: 'Outfit', sans-serif;">Struktur Organisasi</h2>
-                <p class="text-muted">Manajemen hierarki jabatan dan penugasan pejabat UNSERA.</p>
+                <p class="text-muted mb-0">Manajemen hierarki jabatan dan penugasan pejabat UNSERA.</p>
             </div>
-            <button class="btn btn-primary rounded-pill px-4" data-bs-toggle="modal" data-bs-target="#addRootModal">
-                <i class="fas fa-plus me-2"></i>Tambah Unit Utama
-            </button>
+            <div class="col-lg-6">
+                <div class="d-flex gap-3 justify-content-lg-end">
+                    <div class="input-group" style="max-width: 300px;">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="fas fa-search"></i></span>
+                        <input type="text" id="orgSearch" class="form-control border-start-0" placeholder="Cari unit atau nama..." onkeyup="filterOrg()">
+                    </div>
+                    <button class="btn btn-primary rounded-pill px-4" data-bs-toggle="modal" data-bs-target="#addRootModal">
+                        <i class="fas fa-plus me-2"></i>Tambah Unit
+                    </button>
+                </div>
+            </div>
         </div>
 
         <div class="org-container">
@@ -165,14 +171,14 @@ $breadcrumbs = [['label' => 'Struktur Organisasi', 'url' => '#']];
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
                                 <h3><?= htmlspecialchars($row['nama_jabatan']) ?></h3>
-                                <p><i class="fas fa-user-tie me-2"></i><?= htmlspecialchars($row['nama_pejabat'] ?: 'Belum ada pejabat') ?></p>
+                                <p class="mb-0 text-white-50 small"><i class="fas fa-user-tie me-1"></i><?= htmlspecialchars($row['nama_pejabat'] ?: 'Belum Terisi') ?></p>
                             </div>
                             <div class="dropdown">
                                 <button class="btn btn-link text-white p-0" data-bs-toggle="dropdown"><i class="fas fa-ellipsis-v"></i></button>
                                 <ul class="dropdown-menu dropdown-menu-end">
-                                    <li><a class="dropdown-item" href="#" onclick="editRoot(<?= $row['id'] ?>, '<?= addslashes($row['nama_jabatan']) ?>', '<?= addslashes($row['nama_pejabat']) ?>', '<?= addslashes($row['keterangan']) ?>')"><i class="fas fa-edit me-2"></i>Edit</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="editRoot(<?= $row['id'] ?>, '<?= addslashes($row['nama_jabatan']) ?>', '<?= addslashes($row['nama_pejabat']) ?>'); return false;"><i class="fas fa-edit me-2"></i>Edit</a></li>
                                     <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteJabatan(<?= $row['id'] ?>)"><i class="fas fa-trash me-2"></i>Hapus</a></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteJabatan(<?= $row['id'] ?>); return false;"><i class="fas fa-trash me-2"></i>Hapus</a></li>
                                 </ul>
                             </div>
                         </div>
@@ -194,13 +200,13 @@ $breadcrumbs = [['label' => 'Struktur Organisasi', 'url' => '#']];
                                 <div class="sub-icon"><i class="fas fa-id-badge"></i></div>
                                 <div class="flex-grow-1">
                                     <div class="fw-bold text-dark mb-0" style="font-size:0.9rem;"><?= htmlspecialchars($child['nama_jabatan']) ?></div>
-                                    <div class="small text-muted"><?= htmlspecialchars($child['nama_pejabat'] ?: '-') ?></div>
+                                    <div class="text-muted small"><i class="fas fa-user-circle me-1"></i><?= htmlspecialchars($child['nama_pejabat'] ?: 'Belum Terisi') ?></div>
                                 </div>
                                 <div class="dropdown">
                                     <button class="btn btn-link btn-sm text-muted" data-bs-toggle="dropdown"><i class="fas fa-cog"></i></button>
                                     <ul class="dropdown-menu dropdown-menu-end">
-                                        <li><a class="dropdown-item" href="#" onclick="editSub(<?= $child['id'] ?>, '<?= addslashes($child['nama_jabatan']) ?>', '<?= addslashes($child['nama_pejabat']) ?>')">Edit</a></li>
-                                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteJabatan(<?= $child['id'] ?>)">Hapus</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="editSub(<?= $child['id'] ?>, '<?= addslashes($child['nama_jabatan']) ?>', '<?= addslashes($child['nama_pejabat']) ?>'); return false;">Edit</a></li>
+                                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteJabatan(<?= $child['id'] ?>); return false;">Hapus</a></li>
                                     </ul>
                                 </div>
                             </div>
@@ -232,13 +238,9 @@ $breadcrumbs = [['label' => 'Struktur Organisasi', 'url' => '#']];
                         <label class="form-label small fw-bold">Nama Jabatan Utama</label>
                         <input type="text" name="nama_jabatan" class="form-control" placeholder="e.g. Rektorat" required>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Nama Pejabat</label>
-                        <input type="text" name="nama_pejabat" class="form-control" placeholder="Nama Lengkap & Gelar">
-                    </div>
                     <div class="mb-0">
-                        <label class="form-label small fw-bold">Keterangan</label>
-                        <textarea name="keterangan" class="form-control" rows="3" placeholder="Opsional..."></textarea>
+                        <label class="form-label small fw-bold">Nama</label>
+                        <input type="text" name="nama_pejabat" class="form-control" placeholder="e.g. Dr. H. Furtasan Ali Yusuf, S.E., S.Kom., M.M.">
                     </div>
                 </div>
                 <div class="modal-footer border-0">
@@ -266,13 +268,9 @@ $breadcrumbs = [['label' => 'Struktur Organisasi', 'url' => '#']];
                         <label class="form-label small fw-bold">Nama Jabatan Utama</label>
                         <input type="text" name="nama_jabatan" id="edit_root_jabatan" class="form-control" required>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Nama Pejabat</label>
-                        <input type="text" name="nama_pejabat" id="edit_root_pejabat" class="form-control">
-                    </div>
                     <div class="mb-0">
-                        <label class="form-label small fw-bold">Keterangan</label>
-                        <textarea name="keterangan" id="edit_root_ket" class="form-control" rows="3"></textarea>
+                        <label class="form-label small fw-bold">Nama</label>
+                        <input type="text" name="nama_pejabat" id="edit_root_pejabat" class="form-control">
                     </div>
                 </div>
                 <div class="modal-footer border-0">
@@ -301,8 +299,8 @@ $breadcrumbs = [['label' => 'Struktur Organisasi', 'url' => '#']];
                         <input type="text" name="nama_jabatan" class="form-control" placeholder="e.g. Kepala Bagian" required>
                     </div>
                     <div class="mb-0">
-                        <label class="form-label small fw-bold">Nama Pejabat</label>
-                        <input type="text" name="nama_pejabat" class="form-control" placeholder="Nama Lengkap">
+                        <label class="form-label small fw-bold">Nama</label>
+                        <input type="text" name="nama_pejabat" class="form-control" placeholder="Nama ...">
                     </div>
                 </div>
                 <div class="modal-footer border-0">
@@ -331,7 +329,7 @@ $breadcrumbs = [['label' => 'Struktur Organisasi', 'url' => '#']];
                         <input type="text" name="nama_jabatan" id="edit_sub_jabatan" class="form-control" required>
                     </div>
                     <div class="mb-0">
-                        <label class="form-label small fw-bold">Nama Pejabat</label>
+                        <label class="form-label small fw-bold">Nama</label>
                         <input type="text" name="nama_pejabat" id="edit_sub_pejabat" class="form-control">
                     </div>
                 </div>
@@ -351,28 +349,47 @@ $breadcrumbs = [['label' => 'Struktur Organisasi', 'url' => '#']];
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    function editRoot(id, jab, pej, ket) {
+    function editRoot(id, jab, pej) {
         document.getElementById('edit_root_id').value = id;
         document.getElementById('edit_root_jabatan').value = jab;
         document.getElementById('edit_root_pejabat').value = pej;
-        document.getElementById('edit_root_ket').value = ket;
-        new bootstrap.Modal(document.getElementById('editRootModal')).show();
+        const modal = new bootstrap.Modal(document.getElementById('editRootModal'));
+        modal.show();
+        return false;
     }
     function openAddSub(parentId) {
         document.getElementById('add_sub_parent_id').value = parentId;
-        new bootstrap.Modal(document.getElementById('addSubModal')).show();
+        const modal = new bootstrap.Modal(document.getElementById('addSubModal'));
+        modal.show();
+        return false;
     }
     function editSub(id, jab, pej) {
         document.getElementById('edit_sub_id').value = id;
         document.getElementById('edit_sub_jabatan').value = jab;
         document.getElementById('edit_sub_pejabat').value = pej;
-        new bootstrap.Modal(document.getElementById('editSubModal')).show();
+        const modal = new bootstrap.Modal(document.getElementById('editSubModal'));
+        modal.show();
+        return false;
     }
     function deleteJabatan(id) {
         if(confirm('Apakah Anda yakin ingin menghapus jabatan ini? Semua data bawahan juga akan ikut terhapus.')) {
             document.getElementById('delete_id').value = id;
             document.getElementById('deleteForm').submit();
         }
+        return false;
+    }
+    function filterOrg() {
+        const query = document.getElementById('orgSearch').value.toLowerCase();
+        const cards = document.querySelectorAll('.org-card');
+        
+        cards.forEach(card => {
+            const text = card.innerText.toLowerCase();
+            if (text.includes(query)) {
+                card.style.display = 'flex';
+            } else {
+                card.style.display = 'none';
+            }
+        });
     }
 </script>
 </body>

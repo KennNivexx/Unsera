@@ -9,7 +9,7 @@ $search = $_GET['search'] ?? '';
 $status = $_GET['status'] ?? '';
 $jabfung = $_GET['jabfung'] ?? '';
 
-$where_clauses = [];
+$where_clauses = ["status_keaktifan != 'Tidak Aktif'"];
 if ($search) {
     $search_safe = $conn->real_escape_string($search);
     $where_clauses[] = "(nama_lengkap LIKE '%$search_safe%' OR status_dosen LIKE '%$search_safe%')";
@@ -28,8 +28,8 @@ $where = count($where_clauses) > 0 ? " WHERE " . implode(" AND ", $where_clauses
 $data = $conn->query("SELECT * FROM dosen $where ORDER BY id DESC");
 
 // Stats for Header
-$total_dosen = $conn->query("SELECT COUNT(*) as total FROM dosen")->fetch_assoc()['total'];
-$total_tetap = $conn->query("SELECT COUNT(*) as total FROM dosen WHERE status_dosen='Tetap'")->fetch_assoc()['total'];
+$total_dosen = $conn->query("SELECT COUNT(*) as total FROM dosen WHERE status_keaktifan != 'Tidak Aktif'")->fetch_assoc()['total'];
+$total_tetap = $conn->query("SELECT COUNT(*) as total FROM dosen WHERE status_keaktifan != 'Tidak Aktif' AND status_dosen='Tetap'")->fetch_assoc()['total'];
 $total_aktif = $conn->query("SELECT COUNT(*) as total FROM dosen WHERE status_keaktifan='Aktif'")->fetch_assoc()['total'];
 
 $breadcrumbs = [
@@ -134,7 +134,6 @@ $breadcrumbs = [
                         <option value="">Semua Status Pegawai</option>
                         <option value="Tetap" <?= $status == 'Tetap' ? 'selected' : '' ?>>Tetap</option>
                         <option value="Tidak Tetap" <?= $status == 'Tidak Tetap' ? 'selected' : '' ?>>Tidak Tetap</option>
-                        <option value="Homebase" <?= $status == 'Homebase' ? 'selected' : '' ?>>Homebase</option>
                     </select>
                 </div>
                 <div class="col-md-3">
@@ -170,9 +169,6 @@ $breadcrumbs = [
                         <tr>
                             <th class="ps-4" style="width: 60px;">No</th>
                             <th>Profil Dosen</th>
-                            <th>Homebase / Prodi</th>
-                            <th>Status Kepegawaian</th>
-                            <th>Jabfung</th>
                             <th class="text-center pe-4">Aksi</th>
                         </tr>
                     </thead>
@@ -205,17 +201,6 @@ $breadcrumbs = [
                                     </div>
                                 </div>
                             </td>
-                            <td>
-                                <div class="text-dark fw-medium small"><?= htmlspecialchars($row['homebase_prodi'] ?? '-') ?></div>
-                                <div class="text-muted" style="font-size: 0.75rem;"><?= htmlspecialchars($row['unit_kerja'] ?? '-') ?></div>
-                            </td>
-                            <td>
-                                <span class="badge-status <?= $badgeClass ?>"><?= htmlspecialchars($row['status_dosen'] ?? '-') ?></span>
-                            </td>
-                            <td>
-                                <div class="small fw-bold text-primary"><?= htmlspecialchars($row['jabfung_akademik'] ?? '-') ?></div>
-                                <div class="text-muted small">TMT: <?= !empty($row['tmt_jabfung']) ? date('d/m/Y', strtotime($row['tmt_jabfung'])) : '-' ?></div>
-                            </td>
                             <td class="text-center pe-4">
                                 <div class="d-flex justify-content-center gap-2">
                                     <a href="detail_dosen.php?id=<?= $row['id'] ?>" class="btn-action" title="Detail Profil"><i class="fas fa-eye"></i></a>
@@ -226,7 +211,7 @@ $breadcrumbs = [
                         <?php 
                             }
                         } else {
-                            echo "<tr><td colspan='6' class='text-center py-5'>
+                            echo "<tr><td colspan='3' class='text-center py-5'>
                                 <div class='text-muted'>
                                     <i class='fas fa-search fa-3x mb-3 opacity-25'></i>
                                     <p class='mb-0 fw-bold'>Data Dosen Tidak Ditemukan</p>
@@ -262,7 +247,7 @@ function renderTable(rows) {
     const tbody = document.querySelector('.data-table tbody');
     if (!tbody) return;
     if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-5">
+        tbody.innerHTML = `<tr><td colspan="3" class="text-center py-5">
             <div class="text-muted">
                 <i class="fas fa-search fa-3x mb-3 opacity-25"></i>
                 <p class="mb-0 fw-bold">Data Dosen Tidak Ditemukan</p>
@@ -292,15 +277,6 @@ function renderTable(rows) {
                         <div class="small text-muted">NIDN: ${escHtml(r.nidn || '-')}</div>
                     </div>
                 </div>
-            </td>
-            <td>
-                <div class="text-dark fw-medium small">${escHtml(r.homebase_prodi || '-')}</div>
-                <div class="text-muted" style="font-size: 0.75rem;">${escHtml(r.unit_kerja || '-')}</div>
-            </td>
-            <td><span class="badge-status ${badgeClass}">${escHtml(r.status_dosen || '-')}</span></td>
-            <td>
-                <div class="small fw-bold text-primary">${escHtml(r.jabfung_akademik || '-')}</div>
-                <div class="text-muted small">TMT: ${tmtJab}</div>
             </td>
             <td class="text-center pe-4">
                 <div class="d-flex justify-content-center gap-2">

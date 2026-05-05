@@ -113,7 +113,7 @@ $result = $conn->query($query);
                                     <div class="small text-muted"><?= htmlspecialchars($row['unit_kerja'] ?? '-') ?></div>
                                 <?php endif; ?>
                             </td>
-                            <td><div class="fw-bold text-danger"><?= $date ? date('d M Y', strtotime($date)) : '-' ?></div></td>
+                            <td><div class="fw-bold text-danger"><?= !empty($date) ? date('d M Y', strtotime($date)) : '-' ?></div></td>
                             <td>
                                 <span class="badge rounded-pill" style="background: #fff1f2; color: #e11d48; border: 1px solid #fee2e2; padding: 6px 14px;">
                                     <?= htmlspecialchars($row['keterangan_keaktifan'] ?: 'NON-AKTIF') ?>

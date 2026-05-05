@@ -28,7 +28,9 @@ $admin_initial = strtoupper(substr($admin_nama, 0, 1));
         </button>
         
         <div class="d-flex align-items-center gap-3">
-            <img src="download.png" alt="UNSERA" class="d-lg-none" style="height: 30px;">
+            <div class="navbar-logo-container d-lg-none">
+                <img src="download.png" alt="UNSERA" style="height: 26px; object-fit: contain;">
+            </div>
             <div class="d-none d-lg-block">
                 <h5 class="fw-bold text-dark mb-0 fs-6"><?= $page_title_text ?></h5>
                 <nav aria-label="breadcrumb">
@@ -58,12 +60,37 @@ $admin_initial = strtoupper(substr($admin_nama, 0, 1));
                 <li class="px-4 py-3 border-bottom d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 fw-bold">Notifikasi</h6>
                     <?php
-                    // Fetch latest additions with IDs
-                    $recentDosen = $conn->query("SELECT id, nama_lengkap, 'Dosen' as tipe FROM dosen ORDER BY id DESC LIMIT 5");
-                    $recentPegawai = $conn->query("SELECT id, nama_lengkap, 'Pegawai' as tipe FROM pegawai ORDER BY id DESC LIMIT 5");
+                    // Fetch latest additions with IDs and timestamps
+                    $recentDosen = $conn->query("SELECT id, nama_lengkap, 'Dosen' as tipe, created_at FROM dosen ORDER BY id DESC LIMIT 5");
+                    $recentPegawai = $conn->query("SELECT id, nama_lengkap, 'Pegawai' as tipe, created_at FROM pegawai ORDER BY id DESC LIMIT 5");
                     $notifs = [];
-                    while($rd = $recentDosen->fetch_assoc()) $notifs[] = $rd;
-                    while($rp = $recentPegawai->fetch_assoc()) $notifs[] = $rp;
+                    
+                    if ($recentDosen) {
+                        while($rd = $recentDosen->fetch_assoc()) $notifs[] = $rd;
+                    }
+                    if ($recentPegawai) {
+                        while($rp = $recentPegawai->fetch_assoc()) $notifs[] = $rp;
+                    }
+
+                    // Sort by created_at desc (only if created_at exists)
+                    usort($notifs, function($a, $b) {
+                        $timeA = isset($a['created_at']) ? strtotime($a['created_at']) : 0;
+                        $timeB = isset($b['created_at']) ? strtotime($b['created_at']) : 0;
+                        return $timeB - $timeA;
+                    });
+
+                    if (!function_exists('formatNotifTime')) {
+                        function formatNotifTime($datetime) {
+                            if (empty($datetime)) return 'Baru saja';
+                            $ts = strtotime($datetime);
+                            if (!$ts) return 'Baru saja';
+                            $diff = time() - $ts;
+                            if ($diff < 60) return 'Baru saja';
+                            if ($diff < 3600) return floor($diff/60) . ' mnt lalu';
+                            if ($diff < 86400) return date('H.i', $ts);
+                            return date('d M Y, H.i', $ts);
+                        }
+                    }
                     ?>
                     <span class="badge bg-primary-subtle text-primary rounded-pill" style="font-size: 0.7rem;"><?= count($notifs) ?> Baru</span>
                 </li>
@@ -81,7 +108,7 @@ $admin_initial = strtoupper(substr($admin_nama, 0, 1));
                             <div>
                                 <div class="fw-bold small"><?= $n['tipe'] ?> Baru Terdaftar</div>
                                 <div class="text-muted small" style="white-space: normal;"><?= htmlspecialchars($n['nama_lengkap']) ?> telah ditambahkan.</div>
-                                <div class="text-primary mt-1" style="font-size: 0.65rem;">Baru saja</div>
+                                <div class="text-primary mt-1" style="font-size: 0.65rem;"><?= formatNotifTime($n['created_at'] ?? '') ?></div>
                             </div>
                         </a>
                     </li>

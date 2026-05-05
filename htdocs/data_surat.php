@@ -86,8 +86,34 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
     }
 }
 
-$stmt = $conn->prepare("SELECT * FROM data_surat WHERE jenis_id = ? ORDER BY tanggal DESC, id DESC");
-$stmt->bind_param("i", $jenis_id);
+$filter_tahun = isset($_GET['tahun']) ? $_GET['tahun'] : '';
+$filter_search = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+$years = [];
+$year_stmt = $conn->prepare("SELECT DISTINCT YEAR(tanggal) as thn FROM data_surat WHERE jenis_id = ? AND tanggal IS NOT NULL ORDER BY thn DESC");
+$year_stmt->bind_param("i", $jenis_id);
+$year_stmt->execute();
+$year_res = $year_stmt->get_result();
+while ($y = $year_res->fetch_assoc()) {
+    if ($y['thn']) $years[] = $y['thn'];
+}
+$year_stmt->close();
+
+if (!empty($filter_tahun) && !empty($filter_search)) {
+    $stmt = $conn->prepare("SELECT * FROM data_surat WHERE jenis_id = ? AND YEAR(tanggal) = ? AND (no_surat LIKE ? OR keterangan LIKE ?) ORDER BY tanggal DESC, id DESC");
+    $search_param = "%" . $filter_search . "%";
+    $stmt->bind_param("iiss", $jenis_id, $filter_tahun, $search_param, $search_param);
+} elseif (!empty($filter_tahun)) {
+    $stmt = $conn->prepare("SELECT * FROM data_surat WHERE jenis_id = ? AND YEAR(tanggal) = ? ORDER BY tanggal DESC, id DESC");
+    $stmt->bind_param("ii", $jenis_id, $filter_tahun);
+} elseif (!empty($filter_search)) {
+    $stmt = $conn->prepare("SELECT * FROM data_surat WHERE jenis_id = ? AND (no_surat LIKE ? OR keterangan LIKE ?) ORDER BY tanggal DESC, id DESC");
+    $search_param = "%" . $filter_search . "%";
+    $stmt->bind_param("iss", $jenis_id, $search_param, $search_param);
+} else {
+    $stmt = $conn->prepare("SELECT * FROM data_surat WHERE jenis_id = ? ORDER BY tanggal DESC, id DESC");
+    $stmt->bind_param("i", $jenis_id);
+}
 $stmt->execute();
 $surat_list = $stmt->get_result();
 $stmt->close();
@@ -139,6 +165,35 @@ $breadcrumbs = [
             </button>
         </div>
 
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+                <form method="GET" action="data_surat.php" class="row g-3">
+                    <input type="hidden" name="jenis_id" value="<?= $jenis_id ?>">
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold text-muted">Filter Tahun</label>
+                        <select name="tahun" class="form-select border-0 bg-light">
+                            <option value="">Semua Tahun</option>
+                            <?php foreach($years as $y): ?>
+                                <option value="<?= $y ?>" <?= $filter_tahun == $y ? 'selected' : '' ?>><?= $y ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label small fw-bold text-muted">Pencarian</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-0 text-muted"><i class="fas fa-search"></i></span>
+                            <input type="text" name="search" class="form-control border-0 bg-light" placeholder="Cari berdasarkan No. Surat atau Keterangan..." value="<?= htmlspecialchars($filter_search) ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100 rounded-pill">
+                            <i class="fas fa-filter me-2"></i>Terapkan
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
@@ -163,7 +218,7 @@ $breadcrumbs = [
                                     </div>
                                 </div>
                             </td>
-                            <td><div class="fw-bold"><?= date('d M Y', strtotime($s['tanggal'])) ?></div></td>
+                            <td><div class="fw-bold"><?= !empty($s['tanggal']) ? date('d M Y', strtotime($s['tanggal'])) : '-' ?></div></td>
                             <td><div class="small text-muted text-truncate" style="max-width: 250px;"><?= htmlspecialchars($s['keterangan'] ?: '-') ?></div></td>
                             <td>
                                 <?php if($s['dokumen']): ?>

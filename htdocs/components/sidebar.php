@@ -7,10 +7,12 @@ $inactive_pages = ['data_tidak_aktif.php'];
 ?>
 <div class="sidebar">
     <div class="sidebar-brand">
-        <img src="download.png" alt="Logo UNSERA" class="sidebar-logo">
+        <div class="logo-container">
+            <img src="download.png" alt="Logo UNSERA" class="sidebar-logo">
+        </div>
         <div class="brand-text">
-            <h2>Kepegawaian</h2>
-            <span>UNSERA PORTAL</span>
+            <h2>UNSERA</h2>
+            <span>Universitas Serang Raya</span>
         </div>
     </div>
 

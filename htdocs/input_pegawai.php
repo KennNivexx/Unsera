@@ -10,13 +10,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['simpan'])) {
     $alamat        = $_POST['alamat'];
     $ttl_tempat    = $_POST['ttl_tempat'] ?? '';
     $ttl_tanggal   = $_POST['ttl_tanggal'] ?: null;
-    $ttl_lama      = ($ttl_tempat ? $ttl_tempat . ', ' : '') . ($ttl_tanggal ? date('d F Y', strtotime($ttl_tanggal)) : '');
+    $ttl_lama      = (!empty($ttl_tempat) ? $ttl_tempat . ', ' : '') . (!empty($ttl_tanggal) ? date('d F Y', strtotime($ttl_tanggal)) : '');
     $status_pribadi= $_POST['status_pribadi'] ?? '';
     $jabatan       = $_POST['posisi_jabatan'];
     $unit          = $_POST['unit_kerja'];
     $tmk           = $_POST['tmt_mulai_bekerja'] ?: null;
-    $tmtk          = $_POST['tmt_tidak_bekerja'] ?: null;
-    $ket_tmtk      = $_POST['ket_tmtk'] ?? '';
+    $tmtk          = !empty($_POST['tmt_tidak_bekerja']) ? $_POST['tmt_tidak_bekerja'] : null;
+    $ket_tmtk      = '';
+    if (!empty($tmtk)) {
+        $alasan_tmtk = $_POST['alasan_tmtk'] ?? '';
+        if ($alasan_tmtk === 'Lainnya') {
+            $ket_tmtk = $_POST['alasan_tmtk_lainnya'] ?? 'Lainnya';
+        } else {
+            $ket_tmtk = $alasan_tmtk;
+        }
+    }
 
     if (!is_dir('uploads')) mkdir('uploads', 0777, true);
     if (!is_dir('dokumen')) mkdir('dokumen', 0777, true);
@@ -82,40 +90,114 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['simpan'])) {
     if(!empty($_POST['status_pegawai'])) {
         foreach($_POST['status_pegawai'] as $i => $std) {
             if(trim($std) !== '') {
-                $tmt = !empty($_POST['tmt_status_pegawai'][$i]) ? $_POST['tmt_status_pegawai'][$i] : null;
-                $tgl_berhenti = !empty($_POST['tmt_tidak_kerja_status'][$i]) ? $_POST['tmt_tidak_kerja_status'][$i] : null;
-                $alasan = !empty($_POST['alasan_berhenti_status_riw'][$i]) ? $_POST['alasan_berhenti_status_riw'][$i] : null;
-                $alasan_lain = ($alasan === 'Dan Lainnya') ? ($_POST['alasan_lainnya_status_riw'][$i] ?? '') : null;
-
-                $filename = '';
-                if(!empty($_FILES['dok_status_peg_riwayat']['name'][$i])) {
-                    $filename = 'uploads/'.time().'_sp_'.basename($_FILES['dok_status_peg_riwayat']['name'][$i]);
-                    move_uploaded_file($_FILES['dok_status_peg_riwayat']['tmp_name'][$i], $filename);
+                $tmt = !empty($_POST['tmt_status'][$i]) ? $_POST['tmt_status'][$i] : null;
+                $filename = $_POST['existing_dok_status'][$i] ?? '';
+                if(!empty($_FILES['dok_status']['name'][$i])) {
+                    $filename = 'uploads/'.time().'_sp_p_'.basename($_FILES['dok_status']['name'][$i]);
+                    move_uploaded_file($_FILES['dok_status']['tmp_name'][$i], $filename);
                 }
-                $status_peg_list[] = [
-                    'status' => $std, 
-                    'tmt' => $tmt, 
-                    'tgl_berhenti' => $tgl_berhenti,
-                    'alasan' => $alasan,
-                    'alasan_lainnya' => $alasan_lain,
-                    'dokumen' => $filename
-                ];
+                $status_peg_list[] = ['status' => $std, 'tmt' => $tmt, 'dokumen' => $filename];
+            }
+        }
+    }
+    // Determine main status (latest by TMT)
+    usort($status_peg_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
+    $status_pegawai_main = $status_peg_list[0]['status'] ?? '';
+    $jenis_pegawai = $status_pegawai_main;
+
+    // Handle Unit Kerja History
+    $unit_list = [];
+    if(!empty($_POST['unit_kerja_hist'])) {
+        foreach($_POST['unit_kerja_hist'] as $i => $uk) {
+            if(trim($uk) !== '') {
+                $tmt = !empty($_POST['tmt_unit'][$i]) ? $_POST['tmt_unit'][$i] : null;
+                $filename = '';
+                if(!empty($_FILES['dok_unit']['name'][$i])) {
+                    $filename = 'uploads/'.time().'_uk_p_'.basename($_FILES['dok_unit']['name'][$i]);
+                    move_uploaded_file($_FILES['dok_unit']['tmp_name'][$i], $filename);
+                }
+                $unit_list[] = ['unit' => $uk, 'tmt' => $tmt, 'dokumen' => $filename];
+            }
+        }
+    }
+    // Sort Unit by TMT DESC
+    usort($unit_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
+    $unit_kerja_main = $unit_list[0]['unit'] ?? $unit;
+
+    // Handle Jabfung History
+    $jabfung_list = [];
+    if(!empty($_POST['jabfung'])) {
+        foreach($_POST['jabfung'] as $i => $jab) {
+            if(trim($jab) !== '') {
+                $tmt = !empty($_POST['tmt_jabfung'][$i]) ? $_POST['tmt_jabfung'][$i] : null;
+                $filename = '';
+                if(!empty($_FILES['dok_jabfung']['name'][$i])) {
+                    $filename = 'uploads/'.time().'_jf_p_'.basename($_FILES['dok_jabfung']['name'][$i]);
+                    move_uploaded_file($_FILES['dok_jabfung']['tmp_name'][$i], $filename);
+                }
+                $jabfung_list[] = ['jabatan' => $jab, 'tmt' => $tmt, 'dokumen' => $filename];
+            }
+        }
+    }
+    // Sort Jabfung by TMT DESC
+    usort($jabfung_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
+    $jabatan_main = $jabfung_list[0]['jabatan'] ?? $jabatan;
+
+    // Handle Golongan DIKTI
+    $lldikti_list = [];
+    if(!empty($_POST['gol_lldikti'])) {
+        foreach($_POST['gol_lldikti'] as $i => $gol) {
+            if(trim($gol) !== '') {
+                $tmt = !empty($_POST['tmt_gol_lldikti'][$i]) ? $_POST['tmt_gol_lldikti'][$i] : null;
+                $filename = '';
+                if(!empty($_FILES['dok_gol_lldikti']['name'][$i])) {
+                    $filename = 'uploads/'.time().'_pl_p_'.basename($_FILES['dok_gol_lldikti']['name'][$i]);
+                    move_uploaded_file($_FILES['dok_gol_lldikti']['tmp_name'][$i], $filename);
+                }
+                $lldikti_list[] = ['golongan' => $gol, 'tmt' => $tmt, 'dokumen' => $filename];
             }
         }
     }
     $status_peg_latest = $status_peg_list[0]['status'] ?? '';
 
+    // Auto-set status_keaktifan: jika tmt_tidak_bekerja diisi → Tidak Aktif
+    $status_keaktifan_insert = !empty($tmtk) ? 'Tidak Aktif' : 'Aktif';
+    $keterangan_keaktifan_insert = !empty($ket_tmtk) ? $ket_tmtk : ($status_keaktifan_insert === 'Tidak Aktif' ? 'Diberhentikan' : '-');
+
+    $jenis_pegawai = $_POST['jenis_pegawai'] ?? '';
+    $jabatan_struktural = $_POST['jabatan_struktural'] ?? '';
+    $tmk_struktural = !empty($_POST['tmk']) ? $_POST['tmk'] : null;
+    $dok_penugasan_struktural = '';
+    if(!empty($_FILES['dok_penugasan_struktural']['name'])) {
+        $dok_penugasan_struktural = 'uploads/'.time().'_str_'.basename($_FILES['dok_penugasan_struktural']['name']);
+        move_uploaded_file($_FILES['dok_penugasan_struktural']['tmp_name'], $dok_penugasan_struktural);
+    }
+
     // Insert into pegawai
-    $sql = "INSERT INTO pegawai (nama_lengkap, alamat, ttl, ttl_tempat, ttl_tanggal, status_pegawai, status_pribadi, posisi_jabatan, unit_kerja, tmt_mulai_kerja, tmt_tidak_kerja, riwayat_pendidikan, ket_tidak_kerja, dok_tmtk, dok_ktp, dok_kk, foto_profil) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $sql = "INSERT INTO pegawai (nama_lengkap, alamat, ttl, ttl_tempat, ttl_tanggal, status_pegawai, status_pribadi, posisi_jabatan, unit_kerja, tmt_mulai_kerja, tmt_tidak_kerja, riwayat_pendidikan, ket_tidak_kerja, keterangan_keaktifan, dok_tmtk, dok_ktp, dok_kk, foto_profil, status_keaktifan, jenis_pegawai, jabatan_struktural, tmk, dok_penugasan_struktural) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sssssssssssssssss",
+    $types = str_repeat("s", 23);
+    $stmt->bind_param($types,
         $nama, $alamat, $ttl_lama, $ttl_tempat, $ttl_tanggal,
         $status_peg_latest, $status_pribadi,
-        $jabatan, $unit, $tmk, $tmtk,
-        $pendidikan, $ket_tmtk, $dok_tmtk,
-        $dok_ktp, $dok_kk, $foto_profil
+        $jabatan_main, $unit_kerja_main, $tmk, $tmtk,
+        $pendidikan, $ket_tmtk, $keterangan_keaktifan_insert, $dok_tmtk,
+        $dok_ktp, $dok_kk, $foto_profil, $status_keaktifan_insert,
+        $jenis_pegawai, $jabatan_struktural, $tmk_struktural, $dok_penugasan_struktural
     );
     
     if ($stmt->execute()) {
@@ -139,10 +221,34 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['simpan'])) {
             }
         }
 
+        // Unit Kerja History
+        foreach ($unit_list as $ul) {
+            $st = $conn->prepare("INSERT INTO unit_kerja_pegawai_riwayat (pegawai_id, unit_kerja, tmt, dokumen) VALUES (?, ?, ?, ?)");
+            $st->bind_param("isss", $pegawai_id, $ul['unit'], $ul['tmt'], $ul['dokumen']);
+            $st->execute();
+            $st->close();
+        }
+
         // Status History
         foreach ($status_peg_list as $stt) {
-            $st = $conn->prepare("INSERT INTO status_pegawai_riwayat (pegawai_id, status_pegawai, tmt, tgl_berhenti, alasan, alasan_lainnya, dokumen) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $st->bind_param("issssss", $pegawai_id, $stt['status'], $stt['tmt'], $stt['tgl_berhenti'], $stt['alasan'], $stt['alasan_lainnya'], $stt['dokumen']);
+            $st = $conn->prepare("INSERT INTO status_pegawai_riwayat (pegawai_id, status_pegawai, tmt, dokumen) VALUES (?, ?, ?, ?)");
+            $st->bind_param("isss", $pegawai_id, $stt['status'], $stt['tmt'], $stt['dokumen']);
+            $st->execute();
+            $st->close();
+        }
+
+        // Jabfung History
+        foreach ($jabfung_list as $jf) {
+            $st = $conn->prepare("INSERT INTO jabfung_pegawai (pegawai_id, jabatan, tmt, dokumen) VALUES (?, ?, ?, ?)");
+            $st->bind_param("isss", $pegawai_id, $jf['jabatan'], $jf['tmt'], $jf['dokumen']);
+            $st->execute();
+            $st->close();
+        }
+
+        // Golongan DIKTI
+        foreach ($lldikti_list as $ld) {
+            $st = $conn->prepare("INSERT INTO lldikti_pegawai (pegawai_id, golongan, tmt, dokumen) VALUES (?, ?, ?, ?)");
+            $st->bind_param("isss", $pegawai_id, $ld['golongan'], $ld['tmt'], $ld['dokumen']);
             $st->execute();
             $st->close();
         }
@@ -254,8 +360,8 @@ $breadcrumbs = [
             font-family: 'Outfit', sans-serif; 
             font-weight: 700; 
             color: #0f172a; 
-            font-size: 1.25rem; 
-            margin-bottom: 1.5rem;
+            font-size: 1.1rem; 
+            margin-bottom: 1rem;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -264,27 +370,28 @@ $breadcrumbs = [
         .dynamic-item { 
             background: #f8fafc; 
             border: 1px solid #e2e8f0; 
-            border-radius: 16px; 
-            padding: 20px; 
-            margin-bottom: 20px; 
+            border-radius: 12px; 
+            padding: 12px; 
+            margin-bottom: 12px; 
             position: relative; 
             transition: all 0.2s;
         }
         .dynamic-item:hover { border-color: #cbd5e1; background: #f1f5f9; }
         .btn-remove { 
             position: absolute; 
-            top: 15px; 
-            right: 15px; 
+            top: 8px; 
+            right: 8px; 
             background: #fee2e2; 
             color: #ef4444; 
             border: none; 
-            width: 32px; 
-            height: 32px; 
-            border-radius: 8px; 
+            width: 24px; 
+            height: 24px; 
+            border-radius: 6px; 
             display: flex; 
             align-items: center; 
             justify-content: center;
             transition: all 0.2s;
+            z-index: 10;
         }
         .btn-remove:hover { background: #ef4444; color: white; }
         .hidden { display: none !important; }
@@ -395,110 +502,112 @@ $breadcrumbs = [
                         <!-- TAB 2: KEPEGAWAIAN -->
                         <div class="tab-pane fade" id="kepegawaian" role="tabpanel">
                             <div class="row g-4">
-                                <div class="col-md-6">
-                                    <h3 class="section-title"><i class="fas fa-briefcase"></i>Status Pegawai</h3>
-                                    <div id="status-wrapper">
-                                        <div class="dynamic-item">
-                                            <div class="row g-3">
-                                                <div class="col-12">
-                                                    <label class="form-label">Status Saat Ini</label>
-                                                    <select name="status_pegawai[]" class="form-select" required>
-                                                        <option value="">- Pilih Status -</option>
-                                                        <option value="Tetap">Tetap</option>
-                                                        <option value="Tidak Tetap">Tidak Tetap</option>
-                                                    </select>
+                                <div class="col-md-12">
+                                    <div class="section-title"><i class="fas fa-id-card"></i> Status Kepegawaian & Jabatan</div>
+                                    <div class="p-4 bg-primary bg-opacity-10 rounded-4 border border-primary border-opacity-25 mb-4">
+                                        <div class="row g-4">
+                                            <div class="col-md-5">
+                                                <label class="form-label text-primary fw-bold small">Riwayat Status Pegawai</label>
+                                                <div id="status-wrapper">
+                                                    <div class="dynamic-item mb-2">
+                                                        <div class="row g-2">
+                                                            <div class="col-md-12">
+                                                                <select name="status_pegawai[]" class="form-select form-select-sm" required>
+                                                                    <option value="">- Pilih Status -</option>
+                                                                    <option value="Tetap">Tetap</option>
+                                                                    <option value="Kontrak">Kontrak</option>
+                                                                    <option value="Honorer">Honorer</option>
+                                                                </select>
+                                                            </div>
+                                                            <div class="col-6"><input type="date" name="tmt_status[]" class="form-control form-control-sm" title="TMT Mulai" required></div>
+                                                            <div class="col-6"><input type="file" name="dok_status[]" class="form-control form-control-sm"></div>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">TMT Status</label>
-                                                    <input type="date" name="tmt_status_pegawai[]" class="form-control">
+                                                <button type="button" class="btn btn-xs btn-outline-primary mt-1" onclick="addStatusRow()"><i class="fas fa-plus"></i> Tambah Riwayat</button>
+                                            </div>
+                                            <div class="col-md-7 border-start border-primary border-opacity-10">
+                                                <div class="form-check form-switch mb-2">
+                                                    <input class="form-check-input" type="checkbox" id="toggleStruk" onchange="document.getElementById('area_jabatan_struktural').classList.toggle('d-none', !this.checked)">
+                                                    <label class="form-check-label fw-bold text-primary small" for="toggleStruk">Memiliki Jabatan Struktural</label>
                                                 </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">SK Status</label>
-                                                    <input type="file" name="dok_status_peg_riwayat[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+                                                <div id="area_jabatan_struktural" class="d-none">
+                                                    <div class="row g-2">
+                                                        <div class="col-md-7">
+                                                            <input type="text" name="jabatan_struktural" class="form-control form-control-sm" placeholder="Nama Jabatan Struktural">
+                                                        </div>
+                                                        <div class="col-md-5">
+                                                            <input type="date" name="tmk" class="form-control form-control-sm" title="TMT Jabatan Struktural">
+                                                        </div>
+                                                        <div class="col-12 mt-1">
+                                                            <label class="tiny text-muted">SK Penugasan (PDF/JPG)</label>
+                                                            <input type="file" name="dok_penugasan_struktural" class="form-control form-control-sm">
+                                                        </div>
+                                                    </div>
                                                 </div>
+                                                <div class="mt-3">
+                                                   <label class="form-label text-primary fw-bold small">TMT Berhenti (Jika Ada)</label>
+                                                   <input type="date" name="tmtk" class="form-control form-control-sm">
+                                               </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <button type="button" onclick="addStatusPegawai()" class="btn btn-sm btn-outline-primary rounded-pill px-3">
-                                        <i class="fas fa-plus me-1"></i>Tambah Riwayat Status
-                                    </button>
 
-                                    <div class="mt-5 p-4 bg-light rounded-4">
-                                        <h3 class="section-title mb-3"><i class="fas fa-map-marker-alt"></i>Jabatan</h3>
-                                        <div class="row g-3">
-                                            <div class="col-md-10">
-                                                <label class="form-label">Jabatan</label>
-                                                <select name="posisi_jabatan" id="input_jabatan" class="form-select" required>
-                                                    <option value="">- Pilih Jabatan -</option>
-                                                    <option value="Staf IT">Staf IT</option>
-                                                    <option value="Administrasi">Administrasi</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-2 d-flex align-items-end">
-                                                <button type="button" onclick="addNewItem('input_jabatan', 'Jabatan')" class="btn btn-outline-primary w-100 rounded-10">+ Baru</button>
-                                            </div>
-                                        </div>
-                                        <div class="row g-3 mt-1">
-                                            <div class="col-md-10">
-                                                <label class="form-label">Unit Kerja</label>
-                                                <select name="unit_kerja" class="form-select" id="select_unit" required>
-                                                    <option value="">- Pilih Unit Kerja -</option>
-                                                    <option value="Biro Umum">Biro Umum</option>
-                                                    <option value="Biro Kepegawaian">Biro Kepegawaian</option>
-                                                    <option value="BAAK">BAAK</option>
-                                                    <option value="UPT Perpustakaan">UPT Perpustakaan</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-2 d-flex align-items-end">
-                                                <button type="button" onclick="addNewItem('select_unit', 'Unit Kerja')" class="btn btn-outline-primary w-100 rounded-10">+ Baru</button>
-                                            </div>
-                                        </div>
-                                        <div class="row g-3 mt-1">
-                                            <div class="col-12">
-                                                <label class="form-label">Tanggal Mulai Bekerja (Pertama Kali)</label>
-                                                <input type="date" name="tmt_mulai_bekerja" class="form-control">
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                    <div class="p-4 bg-light rounded-4">
+                                         <div class="row g-4">
+                                             <div class="col-md-6">
+                                                 <h3 class="section-title mb-3"><i class="fas fa-map-marker-alt"></i>Riwayat Unit Kerja</h3>
+                                                 <div id="unit-kerja-wrapper">
+                                                     <div class="dynamic-item p-2 mb-2 bg-white border rounded shadow-sm">
+                                                         <div class="row g-2">
+                                                             <div class="col-12">
+                                                                 <input type="text" name="unit_kerja_hist[]" class="form-control form-control-sm" placeholder="Nama Unit Kerja (Biro/Bagian/UPT)" required>
+                                                             </div>
+                                                             <div class="col-6"><input type="date" name="tmt_unit[]" class="form-control form-control-sm"></div>
+                                                             <div class="col-6"><input type="file" name="dok_unit[]" class="form-control form-control-sm"></div>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                                 <button type="button" onclick="addUnitKerja()" class="btn btn-xs btn-outline-primary mt-1"><i class="fas fa-plus"></i> Tambah Unit Kerja</button>
+                                             </div>
+                                             <div class="col-md-6">
+                                                 <h3 class="section-title mb-3"><i class="fas fa-briefcase"></i>Riwayat Jabatan</h3>
+                                                 <div id="jabatan-wrapper">
+                                                     <div class="dynamic-item p-2 mb-2 bg-white border rounded shadow-sm">
+                                                         <div class="row g-2">
+                                                             <div class="col-12">
+                                                                 <input type="text" name="jabfung[]" class="form-control form-control-sm" placeholder="Posisi Jabatan" required>
+                                                             </div>
+                                                             <div class="col-6"><input type="date" name="tmt_jabfung[]" class="form-control form-control-sm"></div>
+                                                             <div class="col-6"><input type="file" name="dok_jabfung[]" class="form-control form-control-sm"></div>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                                 <button type="button" onclick="addJabatan()" class="btn btn-xs btn-outline-primary mt-1"><i class="fas fa-plus"></i> Tambah Jabatan</button>
+                                             </div>
+                                         </div>
 
-                                <div class="col-md-6">
-                                    <h3 class="section-title"><i class="fas fa-university"></i>Golongan Yayasan</h3>
-                                    <div id="yayasan-wrapper">
-                                        <div class="dynamic-item">
-                                            <div class="row g-3">
-                                                <div class="col-12">
-                                                    <label class="form-label">Golongan Yayasan</label>
-                                                    <select name="gol_yayasan[]" class="form-select">
-                                                        <option value="">- Pilih Golongan -</option>
-                                                        <optgroup label="Golongan I">
-                                                            <option value="I/a">I/a</option><option value="I/b">I/b</option>
-                                                        </optgroup>
-                                                        <optgroup label="Golongan II">
-                                                            <option value="II/a">II/a</option><option value="II/b">II/b</option>
-                                                        </optgroup>
-                                                        <optgroup label="Golongan III">
-                                                            <option value="III/a">III/a</option><option value="III/b">III/b</option><option value="III/c">III/c</option>
-                                                        </optgroup>
-                                                        <optgroup label="Golongan IV">
-                                                            <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option><option value="IV/c">IV/c</option><option value="IV/d">IV/d</option><option value="IV/e">IV/e</option>
-                                                        </optgroup>
-                                                    </select>
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">TMT Golongan</label>
-                                                    <input type="date" name="tmt_gol_yayasan[]" class="form-control">
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">Upload SK Golongan</label>
-                                                    <input type="file" name="dok_gol_yayasan[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
-                                                </div>
-                                            </div>
-                                        </div>
+                                         <div class="mt-4 pt-4 border-top">
+                                             <h3 class="section-title mb-3"><i class="fas fa-award"></i>Golongan & Kepangkatan</h3>
+                                             <div id="yayasan-wrapper">
+                                                 <div class="dynamic-item p-2 mb-2 bg-white border rounded shadow-sm" style="max-width: 500px;">
+                                                     <div class="row g-2">
+                                                         <div class="col-12">
+                                                             <select name="gol_yayasan[]" class="form-select form-select-sm">
+                                                                 <option value="">- Pilih Golongan -</option>
+                                                                 <?php $gols=['I/a','I/b','I/c','I/d','II/a','II/b','II/c','II/d','III/a','III/b','III/c','III/d','IV/a','IV/b','IV/c','IV/d']; 
+                                                                 foreach($gols as $g) echo "<option value='$g'>$g</option>"; ?>
+                                                             </select>
+                                                         </div>
+                                                         <div class="col-6"><input type="date" name="tmt_gol_yayasan[]" class="form-control form-control-sm"></div>
+                                                         <div class="col-6"><input type="file" name="dok_gol_yayasan[]" class="form-control form-control-sm"></div>
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                             <button type="button" onclick="addYayasan()" class="btn btn-xs btn-outline-primary mt-1"><i class="fas fa-plus"></i> Tambah Riwayat Yayasan</button>
+                                         </div>
                                     </div>
-                                    <button type="button" onclick="addYayasan()" class="btn btn-sm btn-outline-primary rounded-pill px-3">
-                                        <i class="fas fa-plus me-1"></i>Tambah Riwayat Golongan
-                                    </button>
+
                                 </div>
                             </div>
                         </div>
@@ -529,7 +638,7 @@ $breadcrumbs = [
                                                     <input type="date" name="pend_tahun[]" class="form-control" required>
                                                 </div>
                                                 <div class="col-md-6">
-                                                    <label class="form-label">Ijazah & Transkrip</label>
+                                                    <label class="form-label">Upload Ijazah & Transkrip</label>
                                                     <input type="file" name="dok_pendidikan[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
                                                 </div>
                                             </div>
@@ -602,14 +711,14 @@ $breadcrumbs = [
                                             <input type="text" name="ket_tidak_aktif_lainnya" class="form-control" placeholder="Jelaskan status...">
                                         </div>
 
-                                        <div id="area_keaktifan_details" class="pt-3 border-top border-danger border-opacity-25">
+                                        <div id="area_keaktifan_details" class="pt-3 border-top border-danger border-opacity-25 hidden">
                                             <div class="mb-3">
-                                                <label class="form-label text-danger small">TMT Status (Terhitung Mulai Tanggal)</label>
-                                                <input type="date" name="tmt_tidak_bekerja" class="form-control" required>
+                                                <label class="form-label text-danger small">TMT Mulai Tidak Bekerja</label>
+                                                <input type="date" name="tmt_tidak_bekerja" class="form-control">
                                             </div>
                                             <div>
-                                                <label class="form-label text-danger small">Upload Dokumen Pendukung (Wajib)</label>
-                                                <input type="file" name="dok_tmtk" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                                                <label class="form-label text-danger small">Upload Dokumen Pendukung (SK/Surat)</label>
+                                                <input type="file" name="dok_tmtk" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
                                             </div>
                                         </div>
                                     </div>
@@ -648,59 +757,77 @@ function previewImage(input) {
         }
         reader.readAsDataURL(input.files[0]);
     }
-}
-
-function addStatusPegawai() {
-    const html = `<div class="dynamic-item">
-        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
-        <div class="row g-3">
-            <div class="col-12">
-                <label class="form-label text-primary small">Status Pegawai</label>
+}function addStatusRow() {
+    const html = `<div class="dynamic-item mb-2">
+        <button type="button" class="btn-remove" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>
+        <div class="row g-2">
+            <div class="col-md-12">
                 <select name="status_pegawai[]" class="form-select form-select-sm" required>
                     <option value="">- Pilih Status -</option>
                     <option value="Tetap">Tetap</option>
-                    <option value="Tidak Tetap">Tidak Tetap</option>
+                    <option value="Kontrak">Kontrak</option>
+                    <option value="Honorer">Honorer</option>
                 </select>
             </div>
-            <div class="col-md-6">
-                <label class="form-label small">TMT Status</label>
-                <input type="date" name="tmt_status_pegawai[]" class="form-control form-control-sm">
-            </div>
-            <div class="col-md-6">
-                <label class="form-label small">SK Status</label>
-                <input type="file" name="dok_status_peg_riwayat[]" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
-            </div>
+            <div class="col-6"><input type="date" name="tmt_status[]" class="form-control form-control-sm" title="TMT Mulai"></div>
+            <div class="col-6"><input type="file" name="dok_status[]" class="form-control form-control-sm"></div>
         </div>
     </div>`;
     document.getElementById('status-wrapper').insertAdjacentHTML('beforeend', html);
 }
 
-function addYayasan() {
-    const html = `<div class="dynamic-item">
+function addUnitKerja() {
+    const html = `<div class="dynamic-item p-2 mb-2 bg-white border">
         <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
-        <div class="row g-3">
+        <div class="row g-2">
             <div class="col-12">
-                <label class="form-label text-primary small">Golongan Yayasan</label>
+                <input type="text" name="unit_kerja_hist[]" class="form-control form-control-sm" placeholder="Nama Unit Kerja (Biro/Bagian/UPT)" required>
+            </div>
+            <div class="col-6"><input type="date" name="tmt_unit[]" class="form-control form-control-sm"></div>
+            <div class="col-6"><input type="file" name="dok_unit[]" class="form-control form-control-sm"></div>
+        </div>
+    </div>`;
+    document.getElementById('unit-kerja-wrapper').insertAdjacentHTML('beforeend', html);
+}
+
+function addJabatan() {
+    const html = `<div class="dynamic-item p-2 mb-2 bg-white border">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
+        <div class="row g-2">
+            <div class="col-12">
+                <input type="text" name="jabfung[]" class="form-control form-control-sm" placeholder="Posisi Jabatan" required>
+            </div>
+            <div class="col-6"><input type="date" name="tmt_jabfung[]" class="form-control form-control-sm"></div>
+            <div class="col-6"><input type="file" name="dok_jabfung[]" class="form-control form-control-sm"></div>
+        </div>
+    </div>`;
+    document.getElementById('jabatan-wrapper').insertAdjacentHTML('beforeend', html);
+}
+
+function addYayasan() {
+    const html = `<div class="dynamic-item p-2 mb-2 bg-white border">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
+        <div class="row g-2">
+            <div class="col-12">
                 <select name="gol_yayasan[]" class="form-select form-select-sm">
                     <option value="">- Pilih Golongan -</option>
-                    <optgroup label="Golongan I"><option value="I/a">I/a</option><option value="I/b">I/b</option></optgroup>
-                    <optgroup label="Golongan II"><option value="II/a">II/a</option><option value="II/b">II/b</option></optgroup>
-                    <optgroup label="Golongan III"><option value="III/a">III/a</option><option value="III/b">III/b</option><option value="III/c">III/c</option></optgroup>
-                    <optgroup label="Golongan IV"><option value="IV/a">IV/a</option><option value="IV/b">IV/b</option><option value="IV/c">IV/c</option><option value="IV/d">IV/d</option><option value="IV/e">IV/e</option></optgroup>
+                    <option value="I/a">I/a</option><option value="I/b">I/b</option>
+                    <option value="I/c">I/c</option><option value="I/d">I/d</option>
+                    <option value="II/a">II/a</option><option value="II/b">II/b</option>
+                    <option value="II/c">II/c</option><option value="II/d">II/d</option>
+                    <option value="III/a">III/a</option><option value="III/b">III/b</option>
+                    <option value="III/c">III/c</option><option value="III/d">III/d</option>
+                    <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option>
                 </select>
             </div>
-            <div class="col-md-6">
-                <label class="form-label small">TMT</label>
-                <input type="date" name="tmt_gol_yayasan[]" class="form-control form-control-sm">
-            </div>
-            <div class="col-md-6">
-                <label class="form-label small">File SK</label>
-                <input type="file" name="dok_gol_yayasan[]" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
-            </div>
+            <div class="col-6"><input type="date" name="tmt_gol_yayasan[]" class="form-control form-control-sm"></div>
+            <div class="col-6"><input type="file" name="dok_gol_yayasan[]" class="form-control form-control-sm"></div>
         </div>
     </div>`;
     document.getElementById('yayasan-wrapper').insertAdjacentHTML('beforeend', html);
 }
+
+
 
 function addPendidikan() {
     const html = `<div class="dynamic-item">
@@ -738,7 +865,8 @@ function addReward() {
         <label class="form-label text-warning small">Deskripsi Penghargaan</label>
         <input type="text" name="reward_desc[]" class="form-control form-control-sm mb-2" placeholder="Contoh: Karyawan Teladan 2023">
         <div class="row g-2">
-            <div class="col-12"><input type="file" name="reward_file[]" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label class="small">TMT/Tanggal</label><input type="date" name="reward_date[]" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label class="small">File Sertifikat</label><input type="file" name="reward_file[]" class="form-control form-control-sm"></div>
         </div>
     </div>`;
     document.getElementById('reward-wrapper').insertAdjacentHTML('beforeend', html);
@@ -750,7 +878,8 @@ function addPunish() {
         <label class="form-label text-danger small">Deskripsi Sanksi</label>
         <input type="text" name="punish_desc[]" class="form-control form-control-sm mb-2" placeholder="Deskripsi sanksi...">
         <div class="row g-2">
-            <div class="col-12"><input type="file" name="punish_file[]" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label class="small">TMT/Tanggal</label><input type="date" name="punish_date[]" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label class="small">File Pendukung</label><input type="file" name="punish_file[]" class="form-control form-control-sm"></div>
         </div>
     </div>`;
     document.getElementById('punishment-wrapper').insertAdjacentHTML('beforeend', html);
@@ -759,12 +888,13 @@ function addPunish() {
 function toggleStatusKeaktifan(main) {
     const selectSub = document.getElementById('select_sub_status');
     const areaLainnya = document.getElementById('wrapper_keaktifan_lainnya');
+    const areaDetails = document.getElementById('area_keaktifan_details');
     
-    // Clear sub-options
     selectSub.innerHTML = '';
     areaLainnya.classList.add('hidden');
 
     if (main === 'Aktif') {
+        areaDetails.classList.add('hidden');
         const opts = [
             {v: '-', t: 'Aktif Normal'},
             {v: 'Cuti', t: 'Cuti'},
@@ -777,6 +907,7 @@ function toggleStatusKeaktifan(main) {
             selectSub.add(opt);
         });
     } else {
+        areaDetails.classList.remove('hidden');
         const opts = [
             {v: 'Diberhentikan', t: 'Diberhentikan'},
             {v: 'Resign', t: 'Resign'},
@@ -799,29 +930,34 @@ function handleSubStatus(el) {
     }
 }
 
-function addNewItem(id, label) {
-    const el = document.getElementById(id);
-    const newVal = prompt("Masukkan " + label + " baru:");
-    if (newVal && newVal.trim() !== "") {
-        if (el.tagName === 'SELECT') {
-            const opt = document.createElement('option');
-            opt.value = newVal;
-            opt.textContent = newVal;
-            opt.selected = true;
-            el.insertBefore(opt, el.firstChild);
-        } else {
-            // If it's a select with no current options or we want to turn it into a list
-            const opt = document.createElement('option');
-            opt.value = newVal;
-            opt.textContent = newVal;
-            opt.selected = true;
-            if (el.tagName === 'INPUT') {
-                // For input field, we just set the value
-                el.value = newVal;
-            }
-        }
+function toggleAlasanBerhenti() {
+    const tmt = document.getElementById('tmtTidakBekerja');
+    const wrapper = document.getElementById('wrapper_alasan_berhenti');
+    if (tmt && tmt.value) {
+        wrapper.style.display = 'block';
+    } else {
+        wrapper.style.display = 'none';
+        document.getElementById('wrapper_alasan_lainnya').style.display = 'none';
     }
 }
+
+function toggleAlasanLainnya() {
+    const sel = document.getElementById('alasanBerhenti');
+    const wrapper = document.getElementById('wrapper_alasan_lainnya');
+    if (sel && sel.value === 'Lainnya') {
+        wrapper.style.display = 'block';
+    } else {
+        wrapper.style.display = 'none';
+    }
+}
+
+
+// Initialize custom selects on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('#jabatan-wrapper select, #unitkerja-wrapper select').forEach(setupCustomSelect);
+    
+    // Structural toggle handled via inline onchange in HTML
+});
 let lastInvalidTime = 0;
 document.addEventListener('invalid', function(e) {
     const now = Date.now();

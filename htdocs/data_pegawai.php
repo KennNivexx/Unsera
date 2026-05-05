@@ -6,17 +6,23 @@ if (!isset($_SESSION['admin_id'])) {
 }
 
 $search = $_GET['search'] ?? '';
-$where = "";
+$status = $_GET['status'] ?? '';
+$where_clauses = ["status_keaktifan != 'Tidak Aktif'"];
 if ($search) {
     $search_safe = $conn->real_escape_string($search);
-    $where = " WHERE (nama_lengkap LIKE '%$search_safe%' OR posisi_jabatan LIKE '%$search_safe%' OR unit_kerja LIKE '%$search_safe%') ";
+    $where_clauses[] = "(nama_lengkap LIKE '%$search_safe%' OR posisi_jabatan LIKE '%$search_safe%' OR unit_kerja LIKE '%$search_safe%')";
 }
+if ($status) {
+    $status_safe = $conn->real_escape_string($status);
+    $where_clauses[] = "status_pegawai = '$status_safe'";
+}
+$where = " WHERE " . implode(" AND ", $where_clauses);
 
 $data = $conn->query("SELECT * FROM pegawai $where ORDER BY id DESC");
 
 // Stats
-$total_pegawai = $conn->query("SELECT COUNT(*) as total FROM pegawai")->fetch_assoc()['total'];
-$total_tetap = $conn->query("SELECT COUNT(*) as total FROM pegawai WHERE status_pegawai='Tetap'")->fetch_assoc()['total'];
+$total_pegawai = $conn->query("SELECT COUNT(*) as total FROM pegawai WHERE status_keaktifan != 'Tidak Aktif'")->fetch_assoc()['total'];
+$total_tetap = $conn->query("SELECT COUNT(*) as total FROM pegawai WHERE status_keaktifan != 'Tidak Aktif' AND status_pegawai='Tetap'")->fetch_assoc()['total'];
 
 $breadcrumbs = [
     ['label' => 'Tenaga Kependidikan', 'url' => '#'],
@@ -108,13 +114,20 @@ $breadcrumbs = [
         <!-- Filter Section -->
         <div class="filter-section shadow-sm">
             <form method="GET" class="row g-3 align-items-center">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <div class="input-group">
                         <span class="input-group-text bg-transparent border-end-0 text-muted"><i class="fas fa-search"></i></span>
                         <input type="text" name="search" id="searchFilter" class="form-control border-start-0" value="<?= htmlspecialchars($search) ?>" placeholder="Cari nama, jabatan, atau unit..." onkeyup="fetchPegawai()">
                     </div>
                 </div>
                 <div class="col-md-3">
+                    <select name="status" id="statusFilter" class="form-select" onchange="fetchPegawai()">
+                        <option value="">Semua Status</option>
+                        <option value="Tetap" <?= $status == 'Tetap' ? 'selected' : '' ?>>Tetap</option>
+                        <option value="Tidak Tetap" <?= $status == 'Tidak Tetap' ? 'selected' : '' ?>>Tidak Tetap</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
                     <button type="submit" class="btn btn-outline-secondary w-100 rounded-pill"><i class="fas fa-filter me-2"></i>Filter</button>
                 </div>
                 <div class="col-md-3 d-grid">
@@ -140,9 +153,6 @@ $breadcrumbs = [
                         <tr>
                             <th class="ps-4" style="width: 60px;">No</th>
                             <th>Profil Staf</th>
-                            <th>Jabatan & Unit</th>
-                            <th>Status Kerja</th>
-                            <th>Masa Kerja</th>
                             <th class="text-center pe-4">Aksi</th>
                         </tr>
                     </thead>
@@ -151,19 +161,7 @@ $breadcrumbs = [
                         if ($data && $data->num_rows > 0) {
                             $no = 1;
                             while($row = $data->fetch_assoc()) {
-                                $st = strtolower($row['status_pegawai'] ?? '');
-                                $badgeClass = 'badge-tetap';
-                                if($st === 'tidak tetap' || $st === 'tdk tetap') $badgeClass = 'badge-tidak-tetap';
-                                
                                 $initials = strtoupper(substr($row['nama_lengkap'], 0, 1));
-                                
-                                // Simple service time calculation
-                                $tmt = $row['tmt_mulai_kerja'];
-                                $masa_kerja = '-';
-                                if($tmt) {
-                                    $diff = date_diff(date_create($tmt), date_create('now'));
-                                    $masa_kerja = $diff->y . ' Thn, ' . $diff->m . ' Bln';
-                                }
                         ?>
                         <tr>
                             <td class="ps-4 text-muted fw-bold"><?= $no++ ?></td>
@@ -178,20 +176,9 @@ $breadcrumbs = [
                                     </div>
                                     <div>
                                         <div class="fw-bold text-dark mb-0"><?= htmlspecialchars($row['nama_lengkap']) ?></div>
-                                        <div class="small text-muted">ID: <?= str_pad($row['id'], 5, '0', STR_PAD_LEFT) ?></div>
+                                        <div class="small text-muted"><?= htmlspecialchars($row['posisi_jabatan'] ?? '-') ?> | <?= htmlspecialchars($row['unit_kerja'] ?? '-') ?></div>
                                     </div>
                                 </div>
-                            </td>
-                            <td>
-                                <div class="text-dark fw-bold small text-uppercase" style="font-size: 0.7rem; color: var(--unsera-blue) !important;"><?= htmlspecialchars($row['posisi_jabatan'] ?? '-') ?></div>
-                                <div class="text-muted fw-medium" style="font-size: 0.8rem;"><?= htmlspecialchars($row['unit_kerja'] ?? '-') ?></div>
-                            </td>
-                            <td>
-                                <span class="badge-status <?= $badgeClass ?>"><?= htmlspecialchars($row['status_pegawai'] ?? 'N/A') ?></span>
-                            </td>
-                            <td>
-                                <div class="small fw-bold text-dark"><?= $masa_kerja ?></div>
-                                <div class="text-muted" style="font-size: 0.7rem;">TMT: <?= $tmt ? date('d/m/Y', strtotime($tmt)) : '-' ?></div>
                             </td>
                             <td class="text-center pe-4">
                                 <div class="d-flex justify-content-center gap-2">
@@ -203,7 +190,7 @@ $breadcrumbs = [
                         <?php 
                             }
                         } else {
-                            echo "<tr><td colspan='6' class='text-center py-5'>
+                            echo "<tr><td colspan='3' class='text-center py-5'>
                                 <div class='text-muted'>
                                     <i class='fas fa-user-slash fa-3x mb-3 opacity-25'></i>
                                     <p class='mb-0 fw-bold'>Data Pegawai Tidak Ditemukan</p>
@@ -247,21 +234,7 @@ function renderTable(rows) {
         return;
     }
     tbody.innerHTML = rows.map((r, i) => {
-        const st = (r.status_pegawai || '').toLowerCase();
-        let badgeClass = 'badge-tetap';
-        if(st === 'tidak tetap' || st === 'tdk tetap') badgeClass = 'badge-tidak-tetap';
-        
         const initials = (r.nama_lengkap || '?').charAt(0).toUpperCase();
-        const tmt = r.tmt_mulai_kerja || null;
-        let masaKerja = '-';
-        if(tmt) {
-            const birthDate = new Date(tmt);
-            const now = new Date();
-            let years = now.getFullYear() - birthDate.getFullYear();
-            let months = now.getMonth() - birthDate.getMonth();
-            if (months < 0) { years--; months += 12; }
-            masaKerja = `${years} Thn, ${months} Bln`;
-        }
 
         return `
         <tr>
@@ -273,18 +246,9 @@ function renderTable(rows) {
                     </div>
                     <div>
                         <div class="fw-bold text-dark mb-0">${escHtml(r.nama_lengkap)}</div>
-                        <div class="small text-muted">ID: ${String(r.id).padStart(5, '0')}</div>
+                        <div class="small text-muted">${escHtml(r.posisi_jabatan || '-')} | ${escHtml(r.unit_kerja || '-')}</div>
                     </div>
                 </div>
-            </td>
-            <td>
-                <div class="text-dark fw-bold small text-uppercase" style="font-size: 0.7rem; color: var(--unsera-blue) !important;">${escHtml(r.posisi_jabatan || '-')}</div>
-                <div class="text-muted fw-medium" style="font-size: 0.8rem;">${escHtml(r.unit_kerja || '-')}</div>
-            </td>
-            <td><span class="badge-status ${badgeClass}">${escHtml(r.status_pegawai || 'N/A')}</span></td>
-            <td>
-                <div class="small fw-bold text-dark">${masaKerja}</div>
-                <div class="text-muted" style="font-size: 0.7rem;">TMT: ${tmt ? new Date(tmt).toLocaleDateString('id-ID') : '-'}</div>
             </td>
             <td class="text-center pe-4">
                 <div class="d-flex justify-content-center gap-2">
@@ -302,7 +266,8 @@ function escHtml(str) {
 
 function fetchPegawai() {
     const s = encodeURIComponent(document.getElementById('searchFilter')?.value ?? '');
-    fetch(`api_realtime.php?action=pegawai_list&search=${s}`)
+    const st = encodeURIComponent(document.getElementById('statusFilter')?.value ?? '');
+    fetch(`api_realtime.php?action=pegawai_list&search=${s}&status=${st}`)
         .then(r => r.json())
         .then(d => {
             renderTable(d.rows);

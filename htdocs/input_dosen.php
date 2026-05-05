@@ -107,6 +107,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
     }
+    // Determine main status (latest by TMT)
+    usort($status_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
+    $status_dosen_main = $status_list[0]['status'] ?? '';
+    $jenis_dosen = $status_dosen_main;
 
     $jabfung_list = [];
     if(!empty($_POST['jabfung_akademik'])) {
@@ -153,15 +161,40 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     }
 
-    // Latest/Primary values for dashboard
+    // Sort status by TMT DESC
+    usort($status_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
+    $status_dosen_main = $status_list[0]['status'] ?? ($_POST['status_dosen'][0] ?? '');
+
+    // Sort Jabfung by TMT DESC
+    usort($jabfung_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
     $jabfung_akademik = $jabfung_list[0]['jabatan'] ?? '';
     $tmt_jabfung = $jabfung_list[0]['tmt'] ?? null;
     $dok_jabfung = $jabfung_list[0]['dokumen'] ?? '';
 
+    // Sort LLDIKTI by TMT DESC
+    usort($lldikti_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
     $gol_lldikti = $lldikti_list[0]['golongan'] ?? '';
     $tmt_gol_lldikti = $lldikti_list[0]['tmt'] ?? null;
     $dok_gol_lldikti = $lldikti_list[0]['dokumen'] ?? '';
 
+    // Sort Yayasan by TMT DESC
+    usort($yayasan_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
     $gol_yayasan = $yayasan_list[0]['golongan'] ?? '';
     $tmt_gol_yayasan = $yayasan_list[0]['tmt'] ?? null;
     $dok_gol_yayasan = $yayasan_list[0]['dokumen'] ?? '';
@@ -184,9 +217,62 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     }
 
+    $homebase_list = [];
+    if(!empty($_POST['homebase_prodi_hist'])) {
+        foreach($_POST['homebase_prodi_hist'] as $i => $prodi) {
+            if(trim($prodi) !== '') {
+                $tmt = !empty($_POST['tmt_homebase'][$i]) ? $_POST['tmt_homebase'][$i] : null;
+                $filename = '';
+                if(!empty($_FILES['dok_homebase']['name'][$i])) {
+                    $filename = 'uploads/'.time().'_homebase_'.basename($_FILES['dok_homebase']['name'][$i]);
+                    move_uploaded_file($_FILES['dok_homebase']['tmp_name'][$i], $filename);
+                }
+                $homebase_list[] = ['prodi' => $prodi, 'tmt' => $tmt, 'dokumen' => $filename];
+            }
+        }
+    }
+
+    $unit_kerja_list = [];
+    if(!empty($_POST['unit_kerja_hist'])) {
+        foreach($_POST['unit_kerja_hist'] as $i => $unit) {
+            if(trim($unit) !== '') {
+                $tmt = !empty($_POST['tmt_unit'][$i]) ? $_POST['tmt_unit'][$i] : null;
+                $filename = '';
+                if(!empty($_FILES['dok_unit']['name'][$i])) {
+                    $filename = 'uploads/'.time().'_unit_'.basename($_FILES['dok_unit']['name'][$i]);
+                    move_uploaded_file($_FILES['dok_unit']['tmp_name'][$i], $filename);
+                }
+                $unit_kerja_list[] = ['unit' => $unit, 'tmt' => $tmt, 'dokumen' => $filename];
+            }
+        }
+    }
+
+    // Sort Serdos by TMT DESC
+    usort($serdos_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
     $no_serdos = $serdos_list[0]['no'] ?? null;
     $tmt_serdos = $serdos_list[0]['tmt'] ?? null;
     $dok_serdos = $serdos_list[0]['dokumen'] ?? '';
+
+    // Sort Homebase by TMT DESC
+    usort($homebase_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
+    $homebase_prodi = $homebase_list[0]['prodi'] ?? ($_POST['homebase_prodi'] ?? '');
+
+    // Sort Unit Kerja by TMT DESC
+    usort($unit_kerja_list, function($a, $b) {
+        if (!$a['tmt']) return 1;
+        if (!$b['tmt']) return -1;
+        return strtotime($b['tmt']) - strtotime($a['tmt']);
+    });
+    $unit_kerja = $unit_kerja_list[0]['unit'] ?? ($_POST['unit_kerja'] ?? '');
+
     $pendidikan_list = [];
     if (!empty($_POST['pend_jenjang'])) {
         foreach ($_POST['pend_jenjang'] as $i => $jenjang) {
@@ -203,6 +289,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     }
     
+    // Sort Pendidikan by Date DESC
+    usort($pendidikan_list, function($a, $b) {
+        if (!$a['tahun_lulus']) return 1;
+        if (!$b['tahun_lulus']) return -1;
+        return strtotime($b['tahun_lulus']) - strtotime($a['tahun_lulus']);
+    });
     $riwayat_pendidikan = $pendidikan_list[0]['jenjang'] ?? ($_POST['riwayat_pendidikan'] ?? '');
 
     $foto_profil = '';
@@ -212,22 +304,32 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         move_uploaded_file($_FILES['foto_profil']['tmp_name'], $foto_profil);
     }
 
+    $dok_penugasan_struktural = '';
+    if(!empty($_FILES['dok_penugasan_struktural']['name'])) {
+        $dok_penugasan_struktural = 'uploads/'.time().'_str_'.basename($_FILES['dok_penugasan_struktural']['name']);
+        move_uploaded_file($_FILES['dok_penugasan_struktural']['tmp_name'], $dok_penugasan_struktural);
+    }
+
     // Insert using Prepared Statement
     $sql = "INSERT INTO dosen (
         nama_lengkap, alamat, ttl_tempat, ttl_tanggal, nip, nidn, nuptk, status_dosen, status_pribadi, dok_ktp, dok_kk, jenis_dosen, jabatan_struktural, tmk, tmtk, ket_tidak_kerja, dok_tidak_kerja,
         jabfung_akademik, tmt_jabfung, dok_jabfung,
         gol_lldikti, tmt_gol_lldikti, dok_gol_lldikti,
         gol_yayasan, tmt_gol_yayasan, dok_gol_yayasan,
-        homebase_prodi, unit_kerja, no_serdos, tmt_serdos, dok_serdos, riwayat_pendidikan, foto_profil, status_keaktifan, keterangan_keaktifan, tgl_mulai_tidak_bekerja
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        homebase_prodi, unit_kerja, no_serdos, tmt_serdos, dok_serdos, riwayat_pendidikan, foto_profil, status_keaktifan, keterangan_keaktifan, tgl_mulai_tidak_bekerja, dok_penugasan_struktural
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+    $homebase_prodi = $homebase_list[0]['prodi'] ?? ($_POST['homebase_prodi_main'] ?? '');
+    $unit_kerja = $unit_kerja_list[0]['unit'] ?? ($_POST['unit_kerja_main'] ?? '');
 
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("ssssssssssssssssssssssssssssssssssss", 
-        $nama, $alamat, $ttl_tempat, $ttl_tanggal, $nip, $nidn, $nuptk, $status_dosen, $status_pribadi, $dok_ktp, $dok_kk, $jenis_dosen, $jabatan_struktural, $tmk, $tmtk, $ket_tidak_kerja, $dok_tidak_kerja,
+    $types = str_repeat("s", 37);
+    $stmt->bind_param($types, 
+        $nama, $alamat, $ttl_tempat, $ttl_tanggal, $nip, $nidn, $nuptk, $status_dosen_main, $status_pribadi, $dok_ktp, $dok_kk, $jenis_dosen, $jabatan_struktural, $tmk, $tmtk, $ket_tidak_kerja, $dok_tidak_kerja,
         $jabfung_akademik, $tmt_jabfung, $dok_jabfung,
         $gol_lldikti, $tmt_gol_lldikti, $dok_gol_lldikti,
         $gol_yayasan, $tmt_gol_yayasan, $dok_gol_yayasan,
-        $homebase_prodi, $unit_kerja, $no_serdos, $tmt_serdos, $dok_serdos, $riwayat_pendidikan, $foto_profil, $status_keaktifan, $keterangan_keaktifan, $tgl_mulai_tidak_bekerja
+        $homebase_prodi, $unit_kerja, $no_serdos, $tmt_serdos, $dok_serdos, $riwayat_pendidikan, $foto_profil, $status_keaktifan, $keterangan_keaktifan, $tgl_mulai_tidak_bekerja, $dok_penugasan_struktural
     );
     $stmt->execute();
     $last_dosen_id = $conn->insert_id;
@@ -271,41 +373,55 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Insert Histories
     foreach ($pendidikan_list as $pend) {
         $st = $conn->prepare("INSERT INTO pendidikan_dosen (dosen_id, jenjang, institusi, tahun_lulus, dokumen) VALUES (?, ?, ?, ?, ?)");
+        if(!$st) { error_log("prepare pendidikan: ".$conn->error); continue; }
         $st->bind_param("issss", $last_dosen_id, $pend['jenjang'], $pend['institusi'], $pend['tahun_lulus'], $pend['dokumen']);
-        $st->execute();
-        $st->close();
+        $st->execute(); $st->close();
     }
     
     foreach ($status_list as $stt) {
         $st = $conn->prepare("INSERT INTO status_dosen_riwayat (dosen_id, status_dosen, tmt, tgl_berhenti, alasan, alasan_lainnya, dokumen) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        if(!$st) { error_log("prepare status: ".$conn->error); continue; }
         $st->bind_param("issssss", $last_dosen_id, $stt['status'], $stt['tmt'], $stt['tgl_berhenti'], $stt['alasan'], $stt['alasan_lainnya'], $stt['dokumen']);
-        $st->execute();
-        $st->close();
+        $st->execute(); $st->close();
     }
     
     foreach ($jabfung_list as $jf) {
         $st = $conn->prepare("INSERT INTO jabfung_dosen (dosen_id, jabatan, tmt, dokumen) VALUES (?, ?, ?, ?)");
+        if(!$st) { error_log("prepare jabfung: ".$conn->error); continue; }
         $st->bind_param("isss", $last_dosen_id, $jf['jabatan'], $jf['tmt'], $jf['dokumen']);
-        $st->execute();
-        $st->close();
+        $st->execute(); $st->close();
     }
     foreach ($lldikti_list as $ld) {
         $st = $conn->prepare("INSERT INTO lldikti_dosen (dosen_id, golongan, tmt, dokumen) VALUES (?, ?, ?, ?)");
+        if(!$st) { error_log("prepare lldikti: ".$conn->error); continue; }
         $st->bind_param("isss", $last_dosen_id, $ld['golongan'], $ld['tmt'], $ld['dokumen']);
-        $st->execute();
-        $st->close();
+        $st->execute(); $st->close();
     }
     foreach ($yayasan_list as $yy) {
         $st = $conn->prepare("INSERT INTO yayasan_dosen (dosen_id, golongan, tmt, dokumen) VALUES (?, ?, ?, ?)");
+        if(!$st) { error_log("prepare yayasan: ".$conn->error); continue; }
         $st->bind_param("isss", $last_dosen_id, $yy['golongan'], $yy['tmt'], $yy['dokumen']);
-        $st->execute();
-        $st->close();
+        $st->execute(); $st->close();
     }
     foreach ($serdos_list as $sd) {
         $st = $conn->prepare("INSERT INTO sertifikasi_dosen (dosen_id, no_serdos, tmt, dokumen) VALUES (?, ?, ?, ?)");
+        if(!$st) { error_log("prepare serdos: ".$conn->error); continue; }
         $st->bind_param("isss", $last_dosen_id, $sd['no'], $sd['tmt'], $sd['dokumen']);
-        $st->execute();
-        $st->close();
+        $st->execute(); $st->close();
+    }
+    
+    foreach ($homebase_list as $hb) {
+        $st = $conn->prepare("INSERT INTO homebase_dosen_riwayat (dosen_id, homebase_prodi, tmt, dokumen) VALUES (?, ?, ?, ?)");
+        if(!$st) { error_log("prepare homebase: ".$conn->error); continue; }
+        $st->bind_param("isss", $last_dosen_id, $hb['prodi'], $hb['tmt'], $hb['dokumen']);
+        $st->execute(); $st->close();
+    }
+    
+    foreach ($unit_kerja_list as $uk) {
+        $st = $conn->prepare("INSERT INTO unit_kerja_dosen_riwayat (dosen_id, unit_kerja, tmt, dokumen) VALUES (?, ?, ?, ?)");
+        if(!$st) { error_log("prepare unit: ".$conn->error); continue; }
+        $st->bind_param("isss", $last_dosen_id, $uk['unit'], $uk['tmt'], $uk['dokumen']);
+        $st->execute(); $st->close();
     }
 
     echo "<script>alert('Data dosen berhasil disimpan!');location='daftar_dosen.php';</script>"; 
@@ -365,8 +481,8 @@ $breadcrumbs = [
             font-family: 'Outfit', sans-serif; 
             font-weight: 700; 
             color: #0f172a; 
-            font-size: 1.25rem; 
-            margin-bottom: 1.5rem;
+            font-size: 1.1rem; 
+            margin-bottom: 1rem;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -375,27 +491,28 @@ $breadcrumbs = [
         .dynamic-item { 
             background: #f8fafc; 
             border: 1px solid #e2e8f0; 
-            border-radius: 16px; 
-            padding: 20px; 
-            margin-bottom: 20px; 
+            border-radius: 12px; 
+            padding: 12px; 
+            margin-bottom: 12px; 
             position: relative; 
             transition: all 0.2s;
         }
         .dynamic-item:hover { border-color: #cbd5e1; background: #f1f5f9; }
         .btn-remove { 
             position: absolute; 
-            top: 15px; 
-            right: 15px; 
+            top: 8px; 
+            right: 8px; 
             background: #fee2e2; 
             color: #ef4444; 
             border: none; 
-            width: 32px; 
-            height: 32px; 
-            border-radius: 8px; 
+            width: 24px; 
+            height: 24px; 
+            border-radius: 6px; 
             display: flex; 
             align-items: center; 
             justify-content: center;
             transition: all 0.2s;
+            z-index: 10;
         }
         .btn-remove:hover { background: #ef4444; color: white; }
         .upload-placeholder {
@@ -533,161 +650,164 @@ $breadcrumbs = [
                             </div>
                         </div>
 
-                        <!-- TAB 2: KEPEGAWAIAN -->
                         <div class="tab-pane fade" id="kepegawaian" role="tabpanel">
                             <div class="row g-4">
-                                <div class="col-md-6">
-                                    <h3 class="section-title"><i class="fas fa-briefcase"></i>Status Kepegawaian</h3>
-                                    <div id="status-wrapper">
-                                        <div class="dynamic-item">
-                                            <div class="row g-3">
-                                                <div class="col-12">
-                                                    <label class="form-label">Status Dosen</label>
-                                                    <select name="status_dosen[]" class="form-select" required>
-                                                        <option value="">- Pilih Status -</option>
-                                                        <option value="Tetap">Tetap</option>
-                                                        <option value="Tidak Tetap">Tidak Tetap</option>
-                                                        <option value="Homebase">Homebase</option>
-                                                    </select>
+                                <div class="col-md-12">
+                                    <div class="section-title"><i class="fas fa-id-card"></i> Status Kepegawaian & Jabatan</div>
+                                    <div class="p-4 bg-primary bg-opacity-10 rounded-4 border border-primary border-opacity-25 mb-4">
+                                        <div class="row g-4">
+                                            <div class="col-md-5">
+                                                <label class="form-label text-primary fw-bold small">Riwayat Status Dosen</label>
+                                                <div id="status-wrapper">
+                                                    <div class="dynamic-item mb-2">
+                                                        <div class="row g-2">
+                                                            <div class="col-md-12">
+                                                                <select name="status_dosen[]" class="form-select form-select-sm" required>
+                                                                    <option value="">- Pilih Status -</option>
+                                                                    <option value="Tetap">Tetap</option>
+                                                                    <option value="Tidak Tetap">Tidak Tetap</option>
+                                                                    <option value="Homebase">Homebase</option>
+                                                                </select>
+                                                            </div>
+                                                            <div class="col-6"><input type="date" name="tmt_status[]" class="form-control form-control-sm" title="TMT Mulai" required></div>
+                                                            <div class="col-6"><input type="file" name="dok_status[]" class="form-control form-control-sm"></div>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">TMT Status</label>
-                                                    <input type="date" name="tmt_status[]" class="form-control">
+                                                <button type="button" class="btn btn-xs btn-outline-primary mt-1" onclick="addStatusDosen()"><i class="fas fa-plus"></i> Tambah Riwayat</button>
+                                            </div>
+                                            <div class="col-md-7 border-start border-primary border-opacity-10">
+                                                <div class="form-check form-switch mb-2">
+                                                    <input class="form-check-input" type="checkbox" id="toggleStruk" onchange="document.getElementById('area_jabatan_struktural').classList.toggle('d-none', !this.checked)">
+                                                    <label class="form-check-label fw-bold text-primary small" for="toggleStruk">Memiliki Jabatan Struktural</label>
                                                 </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">Upload SK Status</label>
-                                                    <input type="file" name="dok_status[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+                                                <div id="area_jabatan_struktural" class="d-none">
+                                                    <div class="row g-2">
+                                                        <div class="col-md-7">
+                                                            <input type="text" name="jabatan_struktural" class="form-control form-control-sm" placeholder="Nama Jabatan Struktural">
+                                                        </div>
+                                                        <div class="col-md-5">
+                                                            <input type="date" name="tmk" class="form-control form-control-sm" title="TMT Jabatan Struktural">
+                                                        </div>
+                                                        <div class="col-12 mt-1">
+                                                            <label class="tiny text-muted">SK Penugasan (PDF/JPG)</label>
+                                                            <input type="file" name="dok_penugasan_struktural" class="form-control form-control-sm">
+                                                        </div>
+                                                    </div>
                                                 </div>
+                                                <div class="mt-3">
+                                                   <label class="form-label text-primary fw-bold small">TMT Berhenti (Jika Ada)</label>
+                                                   <input type="date" name="tmtk" class="form-control form-control-sm">
+                                               </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <button type="button" onclick="addStatusDosen()" class="btn btn-sm btn-outline-primary rounded-pill px-3">
-                                        <i class="fas fa-plus me-1"></i>Tambah Riwayat Status
-                                    </button>
 
-                                    <div class="mt-5 p-4 bg-light rounded-4">
-                                        <h3 class="section-title mb-3"><i class="fas fa-map-marker-alt"></i>Homebase & Unit</h3>
-                                        <div class="row g-3">
-                                                <div class="col-md-10">
-                                                    <label class="form-label">Program Studi (Homebase)</label>
-                                                    <select name="homebase_prodi" class="form-select" id="select_homebase" required>
-                                                        <option value="">- Pilih Prodi -</option>
-                                                        <option value="S1 Teknik Informatika">S1 Teknik Informatika</option>
-                                                        <option value="S1 Sistem Informasi">S1 Sistem Informasi</option>
-                                                        <option value="S1 Akuntansi">S1 Akuntansi</option>
-                                                        <option value="S1 Manajemen">S1 Manajemen</option>
-                                                    </select>
-                                                </div>
-                                                <div class="col-md-2 d-flex align-items-end">
-                                                    <button type="button" onclick="addNewItem('select_homebase', 'Program Studi')" class="btn btn-outline-primary w-100 rounded-10"><i class="fas fa-plus"></i></button>
+                                    <div class="p-4 bg-light rounded-4 mb-4">
+                                         <h3 class="section-title mb-3"><i class="fas fa-map-marker-alt"></i>Homebase & Unit Kerja</h3>
+                                         <div class="row g-4">
+                                             <div class="col-md-6">
+                                                 <label class="form-label small">Riwayat Program Studi (Homebase)</label>
+                                                 <div id="homebase-wrapper">
+                                                     <div class="dynamic-item p-2 mb-2 bg-white border">
+                                                         <div class="row g-2">
+                                                             <div class="col-12"><input type="text" name="homebase_prodi_hist[]" class="form-control form-control-sm" placeholder="Nama Prodi" required></div>
+                                                             <div class="col-6"><input type="date" name="tmt_homebase[]" class="form-control form-control-sm"></div>
+                                                             <div class="col-6"><input type="file" name="dok_homebase[]" class="form-control form-control-sm"></div>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                                 <button type="button" onclick="addHomebases()" class="btn btn-xs btn-outline-primary mt-1"><i class="fas fa-plus"></i> Tambah Homebase</button>
+                                             </div>
+                                             <div class="col-md-6">
+                                                 <label class="form-label small">Riwayat Fakultas / Unit Kerja</label>
+                                                 <div id="unitkerja-wrapper">
+                                                     <div class="dynamic-item p-2 mb-2 bg-white border">
+                                                         <div class="row g-2">
+                                                             <div class="col-12"><input type="text" name="unit_kerja_hist[]" class="form-control form-control-sm" placeholder="Nama Unit" required></div>
+                                                             <div class="col-6"><input type="date" name="tmt_unit[]" class="form-control form-control-sm"></div>
+                                                             <div class="col-6"><input type="file" name="dok_unit[]" class="form-control form-control-sm"></div>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                                 <button type="button" onclick="addUnitKerja()" class="btn btn-xs btn-outline-primary mt-1"><i class="fas fa-plus"></i> Tambah Unit Kerja</button>
+                                             </div>
+                                         </div>
+                                    </div>
+
+                                    <div class="row g-4">
+                                        <div class="col-md-6">
+                                            <h3 class="section-title mb-3"><i class="fas fa-graduation-cap"></i>Jabatan Fungsional</h3>
+                                            <div id="jabfung-wrapper">
+                                                <div class="dynamic-item mb-2 p-3 bg-white border rounded">
+                                                    <div class="row g-3">
+                                                        <div class="col-12">
+                                                            <select name="jabfung_akademik[]" class="form-select form-select-sm">
+                                                                <option value="">- Pilih Jabatan Akademik -</option>
+                                                                <option value="Asisten Ahli">Asisten Ahli</option>
+                                                                <option value="Lektor">Lektor</option>
+                                                                <option value="Lektor Kepala">Lektor Kepala</option>
+                                                                <option value="Guru Besar">Guru Besar</option>
+                                                            </select>
+                                                        </div>
+                                                        <div class="col-6"><input type="date" name="tmt_jabfung[]" class="form-control form-control-sm" title="TMT"></div>
+                                                        <div class="col-6"><input type="file" name="dok_jabfung[]" class="form-control form-control-sm"></div>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div class="row g-3 mt-1">
-                                                <div class="col-md-10">
-                                                    <label class="form-label">Fakultas / Unit Kerja</label>
-                                                    <select name="unit_kerja" class="form-select" id="select_unit" required>
-                                                        <option value="">- Pilih Unit Kerja -</option>
-                                                        <option value="Fakultas Teknologi Informasi">Fakultas Teknologi Informasi</option>
-                                                        <option value="Fakultas Ekonomi & Bisnis">Fakultas Ekonomi & Bisnis</option>
-                                                        <option value="Fakultas Teknik">Fakultas Teknik</option>
-                                                    </select>
+                                            <button type="button" onclick="addJabfung()" class="btn btn-xs btn-outline-primary mt-1"><i class="fas fa-plus"></i> Tambah Jabfung</button>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h3 class="section-title mb-3"><i class="fas fa-medal"></i>Golongan</h3>
+                                            <div class="row g-3">
+                                                <div class="col-12">
+                                                    <label class="form-label small">Golongan (DIKTI)</label>
+                                                    <div id="lldikti-wrapper">
+                                                        <div class="dynamic-item mb-1">
+                                                            <div class="row g-2">
+                                                                <div class="col-5">
+                                                                    <select name="gol_lldikti[]" class="form-select form-select-sm">
+                                                                        <option value="">- Pilih -</option>
+                                                                         <option value="III/a">III/a</option><option value="III/b">III/b</option>
+                                                                         <option value="III/c">III/c</option><option value="III/d">III/d</option>
+                                                                         <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option>
+                                                                         <option value="IV/c">IV/c</option><option value="IV/d">IV/d</option>
+                                                                     </select>
+                                                                </div>
+                                                                <div class="col-4"><input type="date" name="tmt_gol_lldikti[]" class="form-control form-control-sm"></div>
+                                                                <div class="col-3"><input type="file" name="dok_gol_lldikti[]" class="form-control form-control-sm"></div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button type="button" onclick="addGolLldikti()" class="btn btn-xs btn-outline-primary mt-1"><i class="fas fa-plus"></i></button>
                                                 </div>
-                                                <div class="col-md-2 d-flex align-items-end">
-                                                    <button type="button" onclick="addNewItem('select_unit', 'Unit Kerja')" class="btn btn-outline-primary w-100 rounded-10"><i class="fas fa-plus"></i></button>
+                                                <div class="col-12 mt-3">
+                                                    <label class="form-label small">Golongan (Yayasan)</label>
+                                                    <div id="yayasan-dosen-wrapper">
+                                                        <div class="dynamic-item mb-1">
+                                                            <div class="row g-2">
+                                                                <div class="col-5">
+                                                                    <select name="gol_yayasan[]" class="form-select form-select-sm">
+                                                                        <option value="">- Pilih -</option>
+                                                                         <option value="III/a">III/a</option><option value="III/b">III/b</option>
+                                                                         <option value="III/c">III/c</option><option value="III/d">III/d</option>
+                                                                         <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option>
+                                                                         <option value="IV/c">IV/c</option><option value="IV/d">IV/d</option>
+                                                                     </select>
+                                                                </div>
+                                                                <div class="col-4"><input type="date" name="tmt_gol_yayasan[]" class="form-control form-control-sm"></div>
+                                                                <div class="col-3"><input type="file" name="dok_gol_yayasan[]" class="form-control form-control-sm"></div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button type="button" onclick="addGolYayasanDosen()" class="btn btn-xs btn-outline-primary mt-1"><i class="fas fa-plus"></i></button>
                                                 </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-
-                                <div class="col-md-6">
-                                    <h3 class="section-title"><i class="fas fa-award"></i>Jabatan & Pangkat</h3>
-                                    
-                                    <div class="p-4 bg-primary bg-opacity-10 rounded-4 border border-primary border-opacity-25 mb-4">
-                                        <label class="form-label d-block text-primary">Penugasan Struktural?</label>
-                                        <div class="d-flex gap-3 mt-2">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="radio" name="jenis_dosen" id="nonStruk" value="Non Struktural" checked>
-                                                <label class="form-check-label fw-bold" for="nonStruk">Non-Struktural</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="radio" name="jenis_dosen" id="struk" value="Struktural">
-                                                <label class="form-check-label fw-bold" for="struk">Struktural</label>
-                                            </div>
-                                        </div>
-
-                                        <div id="area_jabatan_struktural" class="mt-3 hidden pt-3 border-top border-primary border-opacity-25">
-                                            <div class="row g-3">
-                                                <div class="col-12">
-                                                    <label class="form-label">Nama Jabatan Struktural</label>
-                                                    <input type="text" name="jabatan_struktural" class="form-control" placeholder="Contoh: Dekan / Kaprodi">
-                                                </div>
-                                                <div class="col-12">
-                                                    <label class="form-label">Tanggal Mulai (TMK)</label>
-                                                    <input type="date" name="tmk" class="form-control">
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div id="jabfung-wrapper">
-                                        <div class="dynamic-item">
-                                            <label class="form-label">Jabatan Fungsional Terakhir</label>
-                                            <div class="row g-3">
-                                                <div class="col-12">
-                                                    <select name="jabfung_akademik[]" class="form-select">
-                                                        <option value="">- Pilih Jabatan Akademik -</option>
-                                                        <option value="Asisten Ahli">Asisten Ahli</option>
-                                                        <option value="Asisten Ahli">Asisten Ahli</option>
-                                                        <option value="Lektor">Lektor</option>
-                                                        <option value="Lektor Kepala">Lektor Kepala</option>
-                                                        <option value="Guru Besar">Guru Besar</option>
-                                                    </select>
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">TMT Jabfung</label>
-                                                    <input type="date" name="tmt_jabfung[]" class="form-control">
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label">Upload SK</label>
-                                                    <input type="file" name="dok_jabfung[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button type="button" onclick="addJabfung()" class="btn btn-sm btn-outline-primary rounded-pill px-3 mb-4">
-                                        <i class="fas fa-plus me-1"></i>Tambah Riwayat Jabfung
-                                    </button>
-
-                                    <div class="row g-3">
-                                        <div class="col-md-6">
-                                            <div class="p-3 bg-light rounded-4">
-                                                <label class="form-label">Pangkat/Gol (DIKTI)</label>
-                                                <select name="gol_lldikti[]" class="form-select mb-2">
-                                                    <option value="">- Pilih -</option>
-                                                    <option value="III/a">III/a</option><option value="III/b">III/b</option>
-                                                    <option value="III/c">III/c</option><option value="III/d">III/d</option>
-                                                    <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option>
-                                                </select>
-                                                <input type="date" name="tmt_gol_lldikti[]" class="form-control form-control-sm mb-2" placeholder="TMT">
-                                                <input type="file" name="dok_gol_lldikti[]" class="form-control form-control-sm" accept=".pdf,.jpg,.png">
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="p-3 bg-light rounded-4">
-                                                <label class="form-label">Golongan (Yayasan)</label>
-                                                <select name="gol_yayasan[]" class="form-select mb-2">
-                                                    <option value="">- Pilih -</option>
-                                                    <option value="III/a">III/a</option><option value="III/b">III/b</option>
-                                                    <option value="III/c">III/c</option><option value="III/d">III/d</option>
-                                                    <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option>
-                                                    <option value="IV/c">IV/c</option><option value="IV/d">IV/d</option>
-                                                    <option value="IV/e">IV/e</option>
-                                                </select>
-                                                <input type="date" name="tmt_gol_yayasan[]" class="form-control form-control-sm mb-2" placeholder="TMT">
-                                                <input type="file" name="dok_gol_yayasan[]" class="form-control form-control-sm" accept=".pdf,.jpg,.png">
-                                            </div>
-                                        </div>
-                                    </div>
+                            </div>
+                        </div>
                                 </div>
                             </div>
                         </div>
@@ -718,7 +838,7 @@ $breadcrumbs = [
                                                     <input type="date" name="pend_tahun[]" class="form-control" required>
                                                 </div>
                                                 <div class="col-md-6">
-                                                    <label class="form-label">Upload Ijazah/Transkrip</label>
+                                                    <label class="form-label">Upload Ijazah & Transkrip</label>
                                                     <input type="file" name="dok_pendidikan[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
                                                 </div>
                                             </div>
@@ -731,6 +851,23 @@ $breadcrumbs = [
 
                                 <div class="col-md-5">
                                     <h3 class="section-title"><i class="fas fa-certificate"></i>Sertifikasi Dosen (Serdos)</h3>
+
+                                    <!-- Toggle Pertanyaan Serdos -->
+                                    <div class="p-3 bg-light rounded-4 border mb-3">
+                                        <label class="form-label fw-bold mb-2">Apakah Dosen Sudah Serdos?</label>
+                                        <div class="d-flex gap-3">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio" name="sudah_serdos" id="serdos_ya" value="ya" onclick="toggleSerdos(true)">
+                                                <label class="form-check-label fw-bold text-success" for="serdos_ya">Ya</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio" name="sudah_serdos" id="serdos_tidak" value="tidak" onclick="toggleSerdos(false)" checked>
+                                                <label class="form-check-label fw-bold text-danger" for="serdos_tidak">Belum</label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div id="serdos-area" class="hidden">
                                     <div class="p-4 bg-success bg-opacity-10 rounded-4 border border-success border-opacity-25 mb-4">
                                         <div id="serdos-list-area">
                                             <div class="mb-3">
@@ -747,6 +884,7 @@ $breadcrumbs = [
                                         <button type="button" onclick="addSerdos()" class="btn btn-sm btn-success rounded-pill w-100 mt-2">
                                             <i class="fas fa-plus me-1"></i>Tambah Serdos Lain
                                         </button>
+                                    </div>
                                     </div>
 
                                     <h3 class="section-title mt-5"><i class="fas fa-medal"></i>Penghargaan dan Sanksi</h3>
@@ -825,14 +963,14 @@ $breadcrumbs = [
                                             <input type="text" name="ket_tidak_aktif_lainnya" class="form-control" placeholder="Jelaskan status...">
                                         </div>
 
-                                        <div id="area_keaktifan_details" class="pt-3 border-top border-danger border-opacity-25">
+                                        <div id="area_keaktifan_details" class="pt-3 border-top border-danger border-opacity-25 hidden">
                                             <div class="mb-3">
-                                                <label class="form-label text-danger small">TMT Status (Terhitung Mulai Tanggal)</label>
-                                                <input type="date" name="tgl_mulai_tidak_bekerja" class="form-control" required>
+                                                <label class="form-label text-danger small">TMT Mulai Tidak Bekerja</label>
+                                                <input type="date" name="tgl_mulai_tidak_bekerja" class="form-control">
                                             </div>
                                             <div>
-                                                <label class="form-label text-danger small">Upload Dokumen Pendukung (Wajib)</label>
-                                                <input type="file" name="dok_tidak_kerja" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                                                <label class="form-label text-danger small">Upload Dokumen Pendukung (SK/Surat)</label>
+                                                <input type="file" name="dok_tidak_kerja" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
                                             </div>
                                         </div>
                                     </div>
@@ -923,17 +1061,8 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById('kk_name').textContent = this.files[0]?.name || '';
     });
 
-    // Handle Structural/Non Switch
-    document.querySelectorAll('input[name="jenis_dosen"]').forEach(r => {
-        r.addEventListener('change', function() {
-            const area = document.getElementById('area_jabatan_struktural');
-            if (this.value === 'Struktural') {
-                area.classList.remove('hidden');
-            } else {
-                area.classList.add('hidden');
-            }
-        });
-    });
+    // Handle Structural Switch
+    // Structural Switch handled by inline onchange in HTML
 });
 
 function previewImage(input) {
@@ -947,11 +1076,10 @@ function previewImage(input) {
 }
 
 function addStatusDosen() {
-    const html = `<div class="dynamic-item">
+    const html = `<div class="dynamic-item mb-2">
         <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
-        <div class="row g-3">
-            <div class="col-12">
-                <label class="form-label text-primary small">Status Dosen</label>
+        <div class="row g-2">
+            <div class="col-md-12">
                 <select name="status_dosen[]" class="form-select form-select-sm" required>
                     <option value="">- Pilih Status -</option>
                     <option value="Tetap">Tetap</option>
@@ -959,14 +1087,8 @@ function addStatusDosen() {
                     <option value="Homebase">Homebase</option>
                 </select>
             </div>
-            <div class="col-md-6">
-                <label class="form-label small">TMT Status</label>
-                <input type="date" name="tmt_status[]" class="form-control form-control-sm">
-            </div>
-            <div class="col-md-6">
-                <label class="form-label small">SK Status</label>
-                <input type="file" name="dok_status[]" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
-            </div>
+            <div class="col-6"><input type="date" name="tmt_status[]" class="form-control form-control-sm" title="TMT Mulai"></div>
+            <div class="col-6"><input type="file" name="dok_status[]" class="form-control form-control-sm"></div>
         </div>
     </div>`;
     document.getElementById('status-wrapper').insertAdjacentHTML('beforeend', html);
@@ -1020,7 +1142,7 @@ function addPendidikan() {
                 <input type="date" name="pend_tahun[]" class="form-control form-control-sm" required>
             </div>
             <div class="col-md-6">
-                <label class="form-label small">File Ijazah</label>
+                <label class="form-label small">Upload Ijazah & Transkrip</label>
                 <input type="file" name="dok_pendidikan[]" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
             </div>
         </div>
@@ -1047,7 +1169,8 @@ function addReward() {
         <label class="form-label text-warning small">Deskripsi Penghargaan</label>
         <input type="text" name="reward_deskripsi[]" class="form-control form-control-sm mb-2">
         <div class="row g-2">
-            <div class="col-12"><input type="file" name="reward_file[]" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label class="small">TMT/Tanggal</label><input type="date" name="reward_tanggal[]" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label class="small">File Sertifikat</label><input type="file" name="reward_file[]" class="form-control form-control-sm"></div>
         </div>
     </div>`;
     document.getElementById('reward-wrapper').insertAdjacentHTML('beforeend', html);
@@ -1059,7 +1182,8 @@ function addPunishment() {
         <label class="form-label text-danger small">Deskripsi Sanksi</label>
         <input type="text" name="punishment_deskripsi[]" class="form-control form-control-sm mb-2">
         <div class="row g-2">
-            <div class="col-12"><input type="file" name="punishment_file[]" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label class="small">TMT/Tanggal</label><input type="date" name="punishment_tanggal[]" class="form-control form-control-sm"></div>
+            <div class="col-md-6"><label class="small">File Pendukung</label><input type="file" name="punishment_file[]" class="form-control form-control-sm"></div>
         </div>
     </div>`;
     document.getElementById('punishment-wrapper').insertAdjacentHTML('beforeend', html);
@@ -1068,12 +1192,13 @@ function addPunishment() {
 function toggleStatusKeaktifan(main) {
     const selectSub = document.getElementById('select_sub_status');
     const areaLainnya = document.getElementById('wrapper_keaktifan_lainnya');
+    const areaDetails = document.getElementById('area_keaktifan_details');
     
-    // Clear sub-options
     selectSub.innerHTML = '';
     areaLainnya.classList.add('hidden');
 
     if (main === 'Aktif') {
+        areaDetails.classList.add('hidden');
         const opts = [
             {v: '-', t: 'Aktif Normal'},
             {v: 'Cuti', t: 'Cuti'},
@@ -1086,6 +1211,7 @@ function toggleStatusKeaktifan(main) {
             selectSub.add(opt);
         });
     } else {
+        areaDetails.classList.remove('hidden');
         const opts = [
             {v: 'Diberhentikan', t: 'Diberhentikan'},
             {v: 'Resign', t: 'Resign'},
@@ -1108,17 +1234,80 @@ function handleSubStatus(el) {
     }
 }
 
-function addNewItem(selectId, label) {
-    const select = document.getElementById(selectId);
-    const newVal = prompt("Masukkan " + label + " baru:");
-    if (newVal && newVal.trim() !== "") {
-        const opt = document.createElement('option');
-        opt.value = newVal;
-        opt.textContent = newVal;
-        opt.selected = true;
-        select.insertBefore(opt, select.firstChild);
+function addHomebases() {
+    const html = `<div class="dynamic-item p-2 mb-2 bg-white border">
+        <button type="button" class="btn-remove" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>
+        <div class="row g-2">
+            <div class="col-12"><input type="text" name="homebase_prodi_hist[]" class="form-control form-control-sm" placeholder="Nama Prodi"></div>
+            <div class="col-6"><input type="date" name="tmt_homebase[]" class="form-control form-control-sm"></div>
+            <div class="col-6"><input type="file" name="dok_homebase[]" class="form-control form-control-sm"></div>
+        </div>
+    </div>`;
+    document.getElementById('homebase-wrapper').insertAdjacentHTML('beforeend', html);
+}
+
+function addUnitKerja() {
+    const html = `<div class="dynamic-item p-2 mb-2 bg-white border">
+        <button type="button" class="btn-remove" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>
+        <div class="row g-2">
+            <div class="col-12"><input type="text" name="unit_kerja_hist[]" class="form-control form-control-sm" placeholder="Nama Unit"></div>
+            <div class="col-6"><input type="date" name="tmt_unit[]" class="form-control form-control-sm"></div>
+            <div class="col-6"><input type="file" name="dok_unit[]" class="form-control form-control-sm"></div>
+        </div>
+    </div>`;
+    document.getElementById('unitkerja-wrapper').insertAdjacentHTML('beforeend', html);
+}
+
+function toggleSerdos(show) {
+    const area = document.getElementById('serdos-area');
+    if (show) {
+        area.classList.remove('hidden');
+    } else {
+        area.classList.add('hidden');
     }
 }
+
+function addGolLldikti() {
+    const html = `<div class="dynamic-item position-relative">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
+        <div class="row g-2">
+            <div class="col-12">
+                <select name="gol_lldikti[]" class="form-select form-select-sm">
+                    <option value="">- Pilih -</option>
+                                                                 <option value="III/a">III/a</option><option value="III/b">III/b</option>
+                                                                 <option value="III/c">III/c</option><option value="III/d">III/d</option>
+                                                                 <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option>
+                                                                 <option value="IV/c">IV/c</option><option value="IV/d">IV/d</option>
+                                                             </select>
+            </div>
+            <div class="col-12"><input type="date" name="tmt_gol_lldikti[]" class="form-control form-control-sm" placeholder="TMT"></div>
+            <div class="col-12"><input type="file" name="dok_gol_lldikti[]" class="form-control form-control-sm" accept=".pdf,.jpg,.png"></div>
+        </div>
+    </div>`;
+    document.getElementById('lldikti-wrapper').insertAdjacentHTML('beforeend', html);
+}
+
+function addGolYayasanDosen() {
+    const html = `<div class="dynamic-item position-relative">
+        <button type="button" onclick="this.closest('.dynamic-item').remove()" class="btn-remove"><i class="fas fa-times"></i></button>
+        <div class="row g-2">
+            <div class="col-12">
+                <select name="gol_yayasan[]" class="form-select form-select-sm">
+                    <option value="">- Pilih -</option>
+                                                                 <option value="III/a">III/a</option><option value="III/b">III/b</option>
+                                                                 <option value="III/c">III/c</option><option value="III/d">III/d</option>
+                                                                 <option value="IV/a">IV/a</option><option value="IV/b">IV/b</option>
+                                                                 <option value="IV/c">IV/c</option><option value="IV/d">IV/d</option>
+                                                             </select>
+            </div>
+            <div class="col-12"><input type="date" name="tmt_gol_yayasan[]" class="form-control form-control-sm" placeholder="TMT"></div>
+            <div class="col-12"><input type="file" name="dok_gol_yayasan[]" class="form-control form-control-sm" accept=".pdf,.jpg,.png"></div>
+        </div>
+    </div>`;
+    document.getElementById('yayasan-dosen-wrapper').insertAdjacentHTML('beforeend', html);
+}
+
+// (Custom select helper removed - inputs are now plain text)
 
 // Global handler for hidden required fields in tabs (with debouncing to prevent blinking)
 let lastInvalidTime = 0;
